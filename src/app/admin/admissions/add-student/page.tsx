@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2, Banknote, Link as LinkIcon, GraduationCap } from 'lucide-react';
+import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2, Banknote, Link as LinkIcon, GraduationCap, Wallet } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, push, query, orderByChild, equalTo, update, onValue, remove, serverTimestamp } from 'firebase/database';
 import { db, createNotification } from '@/lib/firebase';
@@ -39,6 +39,7 @@ type User = {
     email: string;
     phoneNumber?: string;
     role: string;
+    paymentPlan?: string;
     programmeId?: string;
     programmeName?: string;
     year?: number;
@@ -67,6 +68,7 @@ type CreationRequest = {
 };
 
 type Scholarship = { id: string; name: string; percentage: number; };
+type PaymentPlan = { id: string; name: string; installments: number; archived?: boolean; };
 
 export default function AddStudentPage() {
     // Form State
@@ -76,6 +78,7 @@ export default function AddStudentPage() {
     const [phoneNumber, setPhoneNumber] = React.useState('');
     const [programme, setProgramme] = React.useState('');
     const [scholarshipId, setScholarshipId] = React.useState('');
+    const [paymentPlanName, setPaymentPlanName] = React.useState('');
     const [manualId, setManualId] = React.useState('');
     const [isManualId, setIsManualId] = React.useState(false);
     
@@ -108,6 +111,7 @@ export default function AddStudentPage() {
     const [allSemesters, setAllSemesters] = React.useState<any[]>([]);
     const [allCoursePaths, setAllCoursePaths] = React.useState<any[]>([]);
     const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
+    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [pendingRequests, setPendingRequests] = React.useState<CreationRequest[]>([]);
     const [idSettings, setIdSettings] = React.useState<any>(null);
     const [students, setStudents] = React.useState<User[]>([]);
@@ -125,7 +129,7 @@ export default function AddStudentPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [p, i, pref, s, paths, u, reqs, schol] = await Promise.all([
+            const [p, i, pref, s, paths, u, reqs, schol, plans] = await Promise.all([
                 get(ref(db, 'programmes')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/idPrefixes')),
@@ -133,19 +137,20 @@ export default function AddStudentPage() {
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'users')),
                 get(ref(db, 'studentCreationRequests')),
-                get(ref(db, 'scholarships'))
+                get(ref(db, 'scholarships')),
+                get(ref(db, 'settings/paymentPlans'))
             ]);
 
             const pData = p.val() || {};
             setAllProgrammes(Object.keys(pData).map(id => ({ id, ...pData[id] })));
             setAllIntakes(i.exists() ? Object.keys(i.val()).map(id => ({ id, ...i.val()[id] })) : []);
             setIdSettings(pref.val());
-            setAllSemesters(s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : []);
+            const semData = s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : [];
+            setAllSemesters(semData);
             setAllCoursePaths(paths.exists() ? Object.values(paths.val()) : []);
             
-            if (schol.exists()) {
-                setAllScholarships(Object.entries(schol.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
-            }
+            if (schol.exists()) setAllScholarships(Object.entries(schol.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
+            if (plans.exists()) setAllPaymentPlans(Object.entries(plans.val()).map(([id, d]: [string, any]) => ({ id, ...d })).filter(p => !p.archived));
 
             if (u.exists()) {
                 const usersData = u.val();
@@ -190,7 +195,7 @@ export default function AddStudentPage() {
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setProgramme(''); setSelectedIntake('');
-        setScholarshipId('');
+        setScholarshipId(''); setPaymentPlanName('');
         setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact(''); setGuardianEmail(''); setGuardianRelationship('');
@@ -222,6 +227,7 @@ export default function AddStudentPage() {
                 role: 'Student',
                 programmeId: programme, year: Number(selectedYear), semesterId: selectedSemester, intakeId: selectedIntake,
                 scholarshipId: scholarshipId || null,
+                paymentPlan: paymentPlanName || null,
                 dob, gender, nationalId, passport, address, medicalHistory,
                 guardian: { name: guardianName, contact: guardianContact, email: guardianEmail, relationship: guardianRelationship },
                 educationBackground: { school: previousSchool, qualifications }
@@ -233,6 +239,16 @@ export default function AddStudentPage() {
                     if (await isIdTaken(newId)) { toast({ variant: 'destructive', title: 'ID already taken' }); setLoading(false); return; }
                     userDataPayload.id = newId;
                 }
+                
+                // Update specific registration node if phase is selected
+                if (selectedSemester) {
+                    const regRef = ref(db, `registrations/${editingUid}/${selectedSemester}`);
+                    const regSnap = await get(regRef);
+                    if (regSnap.exists()) {
+                        await update(regRef, { paymentPlan: paymentPlanName || null, scholarshipId: scholarshipId || null });
+                    }
+                }
+
                 await updateUserAccount({ uid: editingUid, name, email, phoneNumber, dbData: userDataPayload });
                 toast({ title: 'Student Updated' });
                 resetForm(); fetchInitialData();
@@ -292,7 +308,8 @@ export default function AddStudentPage() {
                         optionalFees: [],
                         applyScholarship: !!scholarshipId,
                         scholarshipId: scholarshipId || null,
-                        scholarshipPercentage: scholarship?.percentage || 0
+                        scholarshipPercentage: scholarship?.percentage || 0,
+                        paymentPlan: paymentPlanName || null
                     };
 
                     updates[`registrations/${newUid}/${selectedSemester}`] = {
@@ -306,7 +323,8 @@ export default function AddStudentPage() {
                         source: 'manual',
                         applyScholarship: !!scholarshipId,
                         scholarshipId: scholarshipId || null,
-                        scholarshipPercentage: scholarship?.percentage || 0
+                        scholarshipPercentage: scholarship?.percentage || 0,
+                        paymentPlan: paymentPlanName || null
                     };
 
                     const txIdToLink = foundUnlinkedTxId || Object.keys(txsSnap.val()).find(k => txsSnap.val()[k].requestId === currentRequestId);
@@ -413,6 +431,7 @@ export default function AddStudentPage() {
         setPhoneNumber(student.phoneNumber || '');
         setProgramme(student.programmeId || '');
         setScholarshipId(student.scholarshipId || '');
+        setPaymentPlanName(student.paymentPlan || '');
         setSelectedIntake(student.intakeId || '');
         setSelectedYear(student.year ? Number(student.year) : '');
         setSelectedSemester(student.semesterId || '');
@@ -488,7 +507,21 @@ export default function AddStudentPage() {
                                                 <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake}><SelectTrigger><SelectValue placeholder="Select"/></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                                 <div className="space-y-1"><Label>Year</Label><Select onValueChange={(v) => setSelectedYear(Number(v))} value={String(selectedYear)}><SelectTrigger><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{availableYears.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
                                                 <div className="space-y-1"><Label>Semester</Label><Select onValueChange={setSelectedSemester} value={selectedSemester}><SelectTrigger><SelectValue placeholder="Semester"/></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>Semester {s.semesterInYear}</SelectItem>)}</SelectContent></Select></div>
-                                                <div className="space-y-1 md:col-span-2">
+                                                
+                                                <div className="space-y-1">
+                                                    <Label className="flex items-center gap-2 text-primary"><Wallet className="h-4 w-4"/> Installment Plan</Label>
+                                                    <Select onValueChange={setPaymentPlanName} value={paymentPlanName}>
+                                                        <SelectTrigger className="border-primary/20 bg-primary/5">
+                                                            <SelectValue placeholder="Assign a payment plan..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="none">Full Payment (No Plan)</SelectItem>
+                                                            {allPaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} Installments)</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-1">
                                                     <Label className="flex items-center gap-2 text-blue-700"><GraduationCap className="h-4 w-4"/> Assigned Scholarship (Optional)</Label>
                                                     <Select onValueChange={setScholarshipId} value={scholarshipId}>
                                                         <SelectTrigger className="border-blue-200 bg-blue-50/30">

@@ -142,6 +142,7 @@ type PaymentRecord = {
     availableYears?: string[];
     availableSemesters?: Semester[];
     breakdown?: FeeBreakdown;
+    academicStanding?: string;
 };
 
 type Transaction = {
@@ -482,7 +483,7 @@ export default function PaymentsManagementPage() {
             computeDerived();
         }));
 
-        const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
+        const savedFiltersRef = ref(db, `settings/paymentFilters/${userData?.uid || 'default'}`);
         get(savedFiltersRef).then(snapshot => {
             if (snapshot.exists()) {
                 const f = snapshot.val();
@@ -556,6 +557,7 @@ export default function PaymentsManagementPage() {
                         updatedRow.totalPaid = latest.totalPaid;
                         updatedRow.breakdown = latest.breakdown;
                         updatedRow.semesterId = latest.semesterId || '';
+                        updatedRow.academicStanding = latest.semesterName;
                         updatedRow.year = String(semesters.find(s=>s.id===latest.semesterId)?.year || '');
                         updatedRow.availableYears = Array.from(new Set(semesters.filter(s=>s.intakeId === latest.intakeId).map(s=>String(s.year)))).sort();
                         updatedRow.availableSemesters = semesters.filter(s=>s.intakeId === latest.intakeId && String(s.year) === updatedRow.year);
@@ -568,6 +570,7 @@ export default function PaymentsManagementPage() {
                     updatedRow.tempStudentName = '';
                     updatedRow.year = '';
                     updatedRow.semesterId = '';
+                    updatedRow.academicStanding = undefined;
                     const maxYear = Math.max(...semesters.map(s => s.year), 1);
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
@@ -808,31 +811,31 @@ export default function PaymentsManagementPage() {
                 <CardContent className="pt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label>
-                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                         </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
-                            <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="none">Plan Not Set (Urgent)</SelectItem><SelectItem value="set">Plan Active</SelectItem></SelectContent></Select>
+                            <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="none">Plan Not Set (Urgent)</SelectItem><SelectItem value="set">Plan Active</SelectItem></SelectContent></Select>
                         </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label>
-                            <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
+                            <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
                         </div>
-                        <div className="space-y-1 lg:col-span-2"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
+                        <div className="space-y-1 lg:col-span-2"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4">
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Min Paid</Label>
-                            <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" />
+                            <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs border-primary/20" />
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Max Paid</Label>
-                            <Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" />
+                            <Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs border-primary/20" />
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Equal to</Label>
                             <div className="relative">
                                 <Equal className="absolute left-2 top-2.5 h-3 w-3 opacity-40"/>
-                                <Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs" />
+                                <Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs border-primary/20" />
                             </div>
                         </div>
                     </div>
@@ -840,7 +843,7 @@ export default function PaymentsManagementPage() {
                     <div className="rounded-md border shadow-sm overflow-hidden">
                         <Table>
                             <TableHeader>
-                                <TableRow>
+                                <TableRow className="bg-muted/50">
                                     <TableHead>System ID</TableHead>
                                     <TableHead>User & Plan</TableHead>
                                     <TableHead className="text-right">Balance</TableHead>
@@ -851,7 +854,7 @@ export default function PaymentsManagementPage() {
                             </TableHeader>
                             <TableBody>
                                 {filteredData.map((info) => (
-                                    <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
+                                    <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30 transition-colors">
                                         <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
                                         <TableCell>
                                             <div className="flex flex-col">
@@ -867,7 +870,7 @@ export default function PaymentsManagementPage() {
                                                         <span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span>
                                                     </Button>
                                                 </PopoverTrigger>
-                                                <PopoverContent className="w-80 p-4">
+                                                <PopoverContent className="w-80 p-4 shadow-2xl">
                                                     <div className="space-y-3">
                                                         <h4 className="text-[10px] font-black uppercase text-primary border-b pb-2 tracking-widest">Balance Breakdown</h4>
                                                         <div className="space-y-1.5 text-xs">
@@ -897,10 +900,12 @@ export default function PaymentsManagementPage() {
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>View Statement</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Badge variant="outline" className="mr-2 h-4 w-4 p-0 flex items-center justify-center">-</Badge>Issue Credit Note</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Badge variant="outline" className="mr-2 h-4 w-4 p-0 flex items-center justify-center">+</Badge>Issue Debit Note</DropdownMenuItem>
+                                                <DropdownMenuContent align="end" className="w-48">
+                                                    <DropdownMenuLabel>Audit Tools</DropdownMenuLabel>
+                                                    <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement of Account</DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit Note</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4 text-destructive"/>Issue Debit Note</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
@@ -914,88 +919,153 @@ export default function PaymentsManagementPage() {
 
             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Record Transaction(s)</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle className="text-2xl font-black">Record Transaction(s)</DialogTitle><DialogDescription>Process manual deposits and installment payments.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-4 space-y-4 py-4">
                         {bulkPaymentRows.map((row, idx) => (
-                            <Card key={row.key} className="border-l-4 border-l-primary relative group">
-                                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
-                                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div>
-                                            <Label className="font-black text-[10px] uppercase">Recipient</Label>
+                            <Card key={row.key} className="border-l-4 border-l-primary relative group overflow-hidden shadow-md">
+                                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
+                                <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div>
+                                                <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Recipient Details</Label>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
+                                                <span className="text-[10px] font-black uppercase text-primary tracking-tighter">Request Student Creation?</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
-                                            <span className="text-[10px] font-bold uppercase text-primary">Request Student Creation?</span>
-                                        </div>
-                                        {row.isNewStudent ? (
-                                            <div className="grid grid-cols-2 gap-3"><Input placeholder="Full Name" value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-9 text-xs"/><Input placeholder="ID (e.g. NEW-01)" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs"/></div>
-                                        ) : (
-                                            <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
-                                        )}
-                                        <div className="grid grid-cols-2 gap-3 pt-2">
-                                            <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
-                                            <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Semester"/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
+                                        
+                                        <div className="space-y-4 pt-2">
+                                            {row.isNewStudent ? (
+                                                <div className="grid grid-cols-2 gap-3"><Input placeholder="Full Name" value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-10 text-xs"/><Input placeholder="Temp ID (e.g. APP-01)" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-10 text-xs font-mono"/></div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
+                                                    {row.academicStanding && (
+                                                        <Badge variant="secondary" className="gap-1.5 font-bold text-[9px] uppercase border-primary/10 bg-primary/5 text-primary">
+                                                            <UserCheck className="h-3 w-3"/> Standing: {row.academicStanding}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <Label className="text-[9px] font-black uppercase opacity-60">Target Year</Label>
+                                                    <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
+                                                        <SelectTrigger className="h-10 text-xs border-primary/20"><SelectValue placeholder="Year..."/></SelectTrigger>
+                                                        <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[9px] font-black uppercase opacity-60">Target Semester</Label>
+                                                    <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}>
+                                                        <SelectTrigger className="h-10 text-xs border-primary/20"><SelectValue placeholder="Phase..."/></SelectTrigger>
+                                                        <SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="space-y-3 border-l pl-6">
-                                        <Label className="font-black text-[10px] uppercase">Allocation</Label>
-                                        {row.semesterId && (
-                                            <ScrollArea className="h-24 border rounded p-2 bg-white">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2"><Checkbox id={`tuition-${row.key}`} checked={row.allocations.includes('Tuition')} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, 'Tuition'] : row.allocations.filter(a=>a!=='Tuition'))}/><Label htmlFor={`tuition-${row.key}`} className="text-xs">Tuition Fees</Label></div>
-                                                    {row.breakdown?.mandatoryItems?.map((f, i) => (
-                                                        <div key={i} className="flex items-center gap-2"><Checkbox id={`mand-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/><Label htmlFor={`mand-${row.key}-${i}`} className="text-xs">{f.name}</Label></div>
-                                                    ))}
+
+                                    <div className="space-y-4 border-l pl-8 border-dashed">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Ledger Allocation</Label>
+                                            {row.totalDue !== undefined && (
+                                                <div className="flex items-center gap-2 text-[10px] font-bold">
+                                                    <span className="opacity-60 uppercase">Bal:</span>
+                                                    <span className="text-destructive font-black">ZMW {(row.totalDue - (row.totalPaid || 0)).toFixed(2)}</span>
                                                 </div>
-                                            </ScrollArea>
-                                        )}
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-bold" />
-                                            <Input placeholder="Reference..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" />
+                                            )}
+                                        </div>
+                                        
+                                        <ScrollArea className="h-32 border rounded-xl p-3 bg-muted/5 shadow-inner">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 p-1.5 hover:bg-white rounded transition-colors border border-transparent hover:border-primary/10">
+                                                    <Checkbox id={`tuition-${row.key}`} checked={row.allocations.includes('Tuition')} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, 'Tuition'] : row.allocations.filter(a=>a!=='Tuition'))}/>
+                                                    <Label htmlFor={`tuition-${row.key}`} className="text-xs cursor-pointer flex-1 font-medium">Tuition Fees</Label>
+                                                </div>
+                                                {row.breakdown?.mandatoryItems?.map((f, i) => (
+                                                    <div key={i} className="flex items-center gap-2 p-1.5 hover:bg-white rounded transition-colors border border-transparent hover:border-primary/10">
+                                                        <Checkbox id={`mand-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/>
+                                                        <Label htmlFor={`mand-${row.key}-${i}`} className="text-xs cursor-pointer flex-1 font-medium">{f.name}</Label>
+                                                    </div>
+                                                ))}
+                                                {row.breakdown?.optionalItems?.map((f, i) => (
+                                                    <div key={`opt-${i}`} className="flex items-center gap-2 p-1.5 hover:bg-white rounded transition-colors border border-transparent hover:border-primary/10 text-muted-foreground opacity-80">
+                                                        <Checkbox id={`opt-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/>
+                                                        <Label htmlFor={`opt-${row.key}-${i}`} className="text-xs cursor-pointer flex-1">{f.name}</Label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </ScrollArea>
+
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <div className="relative">
+                                                <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-11 font-black text-green-600 border-green-200 pl-8 bg-green-50/30" />
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-40">K</span>
+                                            </div>
+                                            <Input placeholder="Reference/Slip #..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-11 text-xs border-primary/20 bg-background" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                         ))}
-                        <Button variant="outline" className="w-full border-dashed" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><Plus className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
+                        <Button variant="outline" className="w-full border-dashed border-2 py-8 rounded-xl bg-muted/5 hover:bg-primary/5 group" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}>
+                            <Plus className="mr-2 h-5 w-5 text-primary group-hover:scale-110 transition-transform"/>
+                            <span className="font-black uppercase text-[10px] tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">Add Transaction Row</span>
+                        </Button>
                     </div>
-                    <DialogFooter><Button onClick={handleSaveAllBulk} disabled={formLoading}>Confirm Transactions</Button></DialogFooter>
+                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg">
+                        <Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 shadow-xl font-black uppercase tracking-widest text-xs">
+                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}
+                            Process & Finalize Batch
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Statement of Account: {historyStudent?.studentName}</DialogTitle></DialogHeader>
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-lg"><HistoryIcon className="h-5 w-5 text-primary"/></div>
+                            <div>
+                                <DialogTitle>Statement of Account</DialogTitle>
+                                <DialogDescription className="font-bold text-foreground">{historyStudent?.studentName} ({historyStudent?.studentId})</DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
                     {historyStudent && (
-                        <ScrollArea className="flex-1 mt-4">
+                        <ScrollArea className="flex-1 mt-6 border rounded-xl bg-muted/5 overflow-hidden">
                             <Table>
-                                <TableHeader className="bg-muted">
+                                <TableHeader className="bg-muted/50 sticky top-0 z-10">
                                     <TableRow>
                                         <TableHead>Date</TableHead>
                                         <TableHead>Ref / Purpose</TableHead>
-                                        <TableHead className="text-right">Credit</TableHead>
-                                        <TableHead className="text-right">Debit</TableHead>
-                                        <TableHead className="text-right">Action</TableHead>
+                                        <TableHead className="text-right">Credit (+)</TableHead>
+                                        <TableHead className="text-right">Debit (-)</TableHead>
+                                        <TableHead className="text-right">Audit</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {rawTransactions
                                         .filter(t => t.userId === historyStudent.userId && t.invoiceId === historyStudent.invoiceId)
                                         .map(tx => (
-                                            <TableRow key={tx.key}>
-                                                <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                            <TableRow key={tx.key} className="hover:bg-white transition-colors">
+                                                <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
                                                 <TableCell>
                                                     <div className="flex flex-col">
-                                                        <span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span>
-                                                        <span className="text-[10px] opacity-60 font-mono">{tx.transactionId}</span>
+                                                        <span className="font-bold text-xs leading-none">{tx.purpose || 'Fees Payment'}</span>
+                                                        <span className="text-[9px] opacity-40 font-mono mt-1 tracking-tighter">ID: {tx.transactionId}</span>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-right text-green-600 font-bold">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell>
-                                                <TableCell className="text-right text-red-600 font-bold">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell>
+                                                <TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell>
+                                                <TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" onClick={() => generateReceipt(tx, historyStudent)}><Download className="h-4 w-4"/></Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 text-primary" onClick={() => generateReceipt(tx, historyStudent)}><Download className="h-4 w-4"/></Button>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -1009,17 +1079,32 @@ export default function PaymentsManagementPage() {
             <Dialog open={isAdjustmentOpen} onOpenChange={setIsAdjustmentOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle>
-                        <DialogDescription>Apply a formal financial adjustment to {adjustmentTarget?.studentName}'s ledger.</DialogDescription>
+                        <div className="flex items-center gap-3 text-primary mb-2">
+                            {adjustmentTarget?.type === 'credit' ? <Plus className="h-6 w-6 rotate-45" /> : <Plus className="h-6 w-6" />}
+                            <DialogTitle className="text-xl font-headline uppercase tracking-tight">Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle>
+                        </div>
+                        <DialogDescription className="text-base">
+                            Applying a financial adjustment to <span className="font-black text-foreground">{adjustmentTarget?.studentName}'s</span> ledger.
+                        </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00" className="font-bold" /></div>
-                        <div className="space-y-1"><Label>Reason for Adjustment</Label><Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g., Correction of billing error..." rows={4} /></div>
+                    <div className="space-y-6 py-6 border-y border-dashed my-4">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-primary tracking-widest">Adjustment Amount (ZMW)</Label>
+                            <div className="relative">
+                                <Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00" className="h-14 text-2xl font-black bg-muted/20 border-primary/20 pl-10" />
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black opacity-30 text-xl">K</span>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Formal Reasoning</Label>
+                            <Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Provide context for this adjustment (Audit requirement)..." rows={4} className="resize-none" />
+                        </div>
                     </div>
-                    <DialogFooter>
-                        <Button onClick={handleSaveAdjustment} disabled={formLoading || !adjAmount || !adjReason.trim()}>
+                    <DialogFooter className="gap-2">
+                        <DialogClose asChild><Button variant="ghost" className="font-bold">Discard</Button></DialogClose>
+                        <Button onClick={handleSaveAdjustment} disabled={formLoading || !adjAmount || !adjReason.trim()} className="px-8 shadow-lg font-black uppercase tracking-widest text-[10px]">
                             {formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}
-                            Issue Note
+                            Post Note & Sync Ledger
                         </Button>
                     </DialogFooter>
                 </DialogContent>
