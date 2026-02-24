@@ -49,7 +49,8 @@ import {
     Tag,
     Receipt,
     ReceiptText,
-    ShieldCheck
+    ShieldCheck,
+    Filter
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -63,7 +64,6 @@ import {
     AlertDialogCancel,
     AlertDialogContent,
     AlertDialogDescription,
-    AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
@@ -534,6 +534,7 @@ export default function RegistrationManagementPage() {
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [semesterTypeFilter, setSemesterTypeFilter] = React.useState<'all' | 'current' | 'upcoming'>('all');
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -694,6 +695,22 @@ export default function RegistrationManagementPage() {
         }
     };
 
+    const isSemesterVisible = (sem: Semester) => {
+        if (semesterTypeFilter === 'all') return true;
+        const now = startOfDay(new Date());
+        if (!sem.startDate) return false;
+        const start = parseISO(sem.startDate);
+        const end = sem.endDate ? parseISO(sem.endDate) : start;
+
+        if (semesterTypeFilter === 'current') {
+            return isWithinInterval(now, { start, end });
+        }
+        if (semesterTypeFilter === 'upcoming') {
+            return isAfter(start, now);
+        }
+        return true;
+    };
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -709,6 +726,25 @@ export default function RegistrationManagementPage() {
                     </div>
                 </CardHeader>
             </Card>
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-muted/30 p-4 rounded-xl border">
+                <div className="flex items-center gap-4">
+                    <Label className="text-[10px] font-black uppercase tracking-widest opacity-60">Display Filters:</Label>
+                    <Tabs value={semesterTypeFilter} onValueChange={(v) => setSemesterTypeFilter(v as any)} className="bg-background rounded-lg border shadow-sm">
+                        <TabsList className="h-9">
+                            <TabsTrigger value="all" className="text-xs px-4">All Phases</TabsTrigger>
+                            <TabsTrigger value="current" className="text-xs px-4">Current Only</TabsTrigger>
+                            <TabsTrigger value="upcoming" className="text-xs px-4">Upcoming Only</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="h-9 px-4 gap-2 bg-background border-primary/20 shadow-sm font-bold">
+                        <CalendarIcon className="h-4 w-4 text-primary"/>
+                        {format(new Date(), 'PPP')}
+                    </Badge>
+                </div>
+            </div>
 
             {loading ? <Skeleton className="h-96 w-full" /> : 
             <Accordion type="multiple" defaultValue={allIntakes.map(i => i.id)} className="w-full">
@@ -729,6 +765,13 @@ export default function RegistrationManagementPage() {
                                 const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === programme.id);
                                 if (!path || !path.semesters) return null;
                                 
+                                const relevantSemesters = Object.keys(path.semesters).filter(semId => {
+                                    const sem = semesters.find(s => s.id === semId);
+                                    return sem && sem.intakeId === intake.id && isSemesterVisible(sem);
+                                });
+
+                                if (relevantSemesters.length === 0 && semesterTypeFilter !== 'all') return null;
+
                                 return (
                                     <div key={programme.id} className="space-y-4 p-4 border rounded-xl bg-muted/10">
                                         <div className="flex justify-between items-center mb-4">
@@ -736,10 +779,8 @@ export default function RegistrationManagementPage() {
                                             <Button variant="ghost" size="sm" asChild className="text-primary font-black uppercase text-[10px] tracking-widest"><Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}>Modify Roadmap &rarr;</Link></Button>
                                         </div>
                                         <div className="grid gap-4 md:grid-cols-2">
-                                            {Object.keys(path.semesters).map(semId => {
-                                                const sem = semesters.find(s => s.id === semId);
-                                                if (!sem || sem.intakeId !== intake.id) return null;
-                                                
+                                            {relevantSemesters.map(semId => {
+                                                const sem = semesters.find(s => s.id === semId)!;
                                                 const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
                                                 const courses = (path.semesters[semId].courses || []).map((cid: string) => {
                                                     const c = allCourses[cid];

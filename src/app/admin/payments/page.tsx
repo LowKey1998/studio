@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -36,7 +37,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -262,7 +263,7 @@ export default function PaymentsManagementPage() {
     // Filters
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
-    const [semesterFilter, setSemesterFilter] = React.useState('all');
+    const [semesterFilter, setSemesterFilter] = React.useState('current');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [planStatusFilter, setPlanStatusFilter] = React.useState('all');
     const [dueFilter, setDueFilter] = React.useState('all');
@@ -384,8 +385,8 @@ export default function PaymentsManagementPage() {
                         const scholarPerc = Number(invoice.scholarshipPercentage || 100);
 
                         const scholarshipAmount = invoice.applyScholarship 
-                            ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
-                            : tuition + mandatory + optional + late;
+                            ? (tuition * (scholarPerc / 100))
+                            : 0;
 
                         billingResults = {
                             totalDue: tuition - scholarshipAmount + mandatory + optional + late,
@@ -502,13 +503,25 @@ export default function PaymentsManagementPage() {
     }, [userData?.uid, serverTimeOffset, dataRefs]);
 
     const filteredData = React.useMemo(() => {
-        const now = getCurrentServerDate();
+        const now = startOfDay(getCurrentServerDate());
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                 p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
-            const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
+            
+            let semesterMatch = true;
+            if (semesterFilter === 'current') {
+                const sem = semesters.find(s => s.id === p.semesterId);
+                if (!sem || !sem.startDate || !sem.endDate) semesterMatch = false;
+                else {
+                    const start = startOfDay(parseISO(sem.startDate));
+                    const end = startOfDay(parseISO(sem.endDate));
+                    semesterMatch = isWithinInterval(now, { start, end });
+                }
+            } else if (semesterFilter !== 'all') {
+                semesterMatch = p.semesterId === semesterFilter;
+            }
             
             let planMatch = true;
             if (planStatusFilter === 'none') planMatch = !p.paymentPlanName;
@@ -545,7 +558,7 @@ export default function PaymentsManagementPage() {
 
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && dateMatch && minMatch && maxMatch && equalMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset, semesters]);
 
     const cashFlowStats = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -872,6 +885,17 @@ export default function PaymentsManagementPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
+                            <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Semesters</SelectItem>
+                                    <SelectItem value="current" className="font-bold text-primary">Current Academic Phase</SelectItem>
+                                    <Separator className="my-1"/>
+                                    {semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
                             <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                 <SelectContent>
@@ -882,7 +906,6 @@ export default function PaymentsManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pb-4 border-b border-dashed items-end">
@@ -899,9 +922,9 @@ export default function PaymentsManagementPage() {
                                 </PopoverContent>
                             </Popover>
                         </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-8 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Min Paid</Label><Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Max Paid</Label><Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Equal to</Label><div className="relative"><Equal className="absolute left-2 top-2.5 h-3 w-3 opacity-40"/><Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs" /></div></div>
                     </div>
 
                     <div className="rounded-md border shadow-sm overflow-hidden">
@@ -923,7 +946,10 @@ export default function PaymentsManagementPage() {
                                         <TableCell>
                                             <div className="flex flex-col">
                                                 <span className="font-bold text-sm">{info.studentName}</span>
-                                                {info.paymentPlanName ? <Badge variant="outline" className="w-fit h-4 text-[8px] uppercase border-primary/20">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="w-fit h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    {info.paymentPlanName ? <Badge variant="outline" className="w-fit h-4 text-[8px] uppercase border-primary/20">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="w-fit h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
+                                                    <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate max-w-[120px]">{info.semesterName}</span>
+                                                </div>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
