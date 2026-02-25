@@ -260,7 +260,6 @@ export default function PaymentsManagementPage() {
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('current');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
-    const [planStatusFilter, setPlanStatusFilter] = React.useState('all');
     const [balanceStatusFilter, setBalanceStatusFilter] = React.useState('all');
 
     // Audit State
@@ -319,7 +318,6 @@ export default function PaymentsManagementPage() {
         const invsData = store.invoices || {};
         const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
         const finData = store.financialSettings || { paymentThreshold: 75 };
-        const plansData = store.paymentPlans || {};
         const coursesData = store.courses || {};
         const configsData = store.configs || {};
         const scholsData = store.scholarships || {};
@@ -397,6 +395,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // IMPORTANT: Fixed strict lookup by invoiceId
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -481,19 +480,15 @@ export default function PaymentsManagementPage() {
                 semesterMatch = p.semesterId === semesterFilter;
             }
             
-            let planMatch = true;
-            if (planStatusFilter === 'none') planMatch = !p.paymentPlanName;
-            else if (planStatusFilter !== 'all') planMatch = p.paymentPlanName === planStatusFilter;
-
             let balanceMatch = true;
             if (balanceStatusFilter === 'cleared') balanceMatch = p.balance <= 0.01;
             else if (balanceStatusFilter === 'owing') balanceMatch = p.balance > 0.01;
             else if (balanceStatusFilter === 'at-risk') balanceMatch = !p.thresholdMet;
             else if (balanceStatusFilter === 'overdue') balanceMatch = !!(p.nextInstallmentDue && isBefore(parseISO(p.nextInstallmentDue), now));
             
-            return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && balanceMatch;
+            return searchMatch && programmeMatch && semesterMatch && intakeMatch && balanceMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, balanceStatusFilter, serverTimeOffset, semesters]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, serverTimeOffset, semesters]);
 
     const cashFlowStats = React.useMemo(() => {
         const now = new Date(Date.now() + serverTimeOffset);
@@ -561,6 +556,7 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
+                // FIXED: Reset total paid and look up specific semester total for selected row context
                 if (field === 'semesterId' || (field === 'year' && updatedRow.semesterId)) {
                     const semId = field === 'semesterId' ? value : updatedRow.semesterId;
                     const info = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === semId);
