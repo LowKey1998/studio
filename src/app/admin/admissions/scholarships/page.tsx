@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -102,22 +103,26 @@ export default function ScholarshipAssignmentsPage() {
                 [`users/${studentUid}/scholarshipId`]: scholId === 'none' ? null : scholId
             };
             
-            // Sync with current semester invoice if applicable
+            // Sync with active registrations and invoices
             const regsSnap = await get(ref(db, `registrations/${studentUid}`));
             if (regsSnap.exists()) {
                 const regs = regsSnap.val();
-                const activeSemId = Object.keys(regs).find(sid => regs[sid].status !== 'Archived');
-                if (activeSemId) {
-                    const invId = regs[activeSemId].invoiceId;
-                    if (invId) {
-                        updates[`invoices/${studentUid}/${invId}/applyScholarship`] = scholId !== 'none';
-                        updates[`invoices/${studentUid}/${invId}/scholarshipId`] = scholId === 'none' ? null : scholId;
-                        updates[`invoices/${studentUid}/${invId}/scholarshipPercentage`] = scholId === 'none' ? 0 : scholarship?.percentage;
+                Object.keys(regs).forEach(sid => {
+                    if (regs[sid].status !== 'Archived') {
+                        const invId = regs[sid].invoiceId;
+                        const hasSchol = scholId !== 'none';
+                        const perc = hasSchol ? scholarship?.percentage : 0;
+
+                        if (invId) {
+                            updates[`invoices/${studentUid}/${invId}/applyScholarship`] = hasSchol;
+                            updates[`invoices/${studentUid}/${invId}/scholarshipId`] = hasSchol ? scholId : null;
+                            updates[`invoices/${studentUid}/${invId}/scholarshipPercentage`] = perc;
+                        }
+                        updates[`registrations/${studentUid}/${sid}/applyScholarship`] = hasSchol;
+                        updates[`registrations/${studentUid}/${sid}/scholarshipId`] = hasSchol ? scholId : null;
+                        updates[`registrations/${studentUid}/${sid}/scholarshipPercentage`] = perc;
                     }
-                    updates[`registrations/${studentUid}/${activeSemId}/applyScholarship`] = scholId !== 'none';
-                    updates[`registrations/${studentUid}/${activeSemId}/scholarshipId`] = scholId === 'none' ? null : scholId;
-                    updates[`registrations/${studentUid}/${activeSemId}/scholarshipPercentage`] = scholId === 'none' ? 0 : scholarship?.percentage;
-                }
+                });
             }
 
             await update(ref(db), updates);
@@ -214,7 +219,7 @@ export default function ScholarshipAssignmentsPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="rounded-md border">
+                    <div className="rounded-md border shadow-sm">
                         <Table>
                             <TableHeader>
                                 <TableRow>

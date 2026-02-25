@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -389,9 +390,9 @@ export default function PaymentsManagementPage() {
                         const mandatory = Number(invoice.totalMandatoryFees || 0);
                         const optional = Number(invoice.totalOptionalFees || 0);
                         const late = Number(invoice.lateFee || 0);
-                        const scholarPerc = Number(invoice.scholarshipPercentage || 100);
+                        const scholarPerc = Number(invoice.scholarshipPercentage || (profile.scholarshipId ? (scholsData[profile.scholarshipId]?.percentage || 0) : 0));
 
-                        const scholarshipAmount = invoice.applyScholarship 
+                        const scholarshipAmount = (invoice.applyScholarship || (profile.scholarshipId && !invoice.applyScholarship === false))
                             ? (tuition * (scholarPerc / 100))
                             : 0;
 
