@@ -166,7 +166,7 @@ export default function StudentDashboardPage() {
                         Object.values(calSettings.anomalies || {})
                     );
                     currentPhase = { year: state.year, semester: state.semester };
-                    standingLabel = `Year ${state.year}, Sem ${state.semester}`;
+                    standingLabel = `Year ${state.year} Semester ${state.semester}`;
                     setAcademicStanding(standingLabel);
 
                     const matchingSemesterEntry = Object.entries(allSemesters).find(([_, s]: [string, any]) => {

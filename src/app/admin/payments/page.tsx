@@ -669,7 +669,7 @@ export default function PaymentsManagementPage() {
             key: Date.now(), 
             userId: info.userId, 
             semesterId: info.semesterId!, 
-            year: String(allSemesters.find(s => s.id === info.semesterId)?.year || '1'),
+            year: String(semesters.find(s => s.id === info.semesterId)?.year || '1'),
             amount: '', 
             comment: '', 
             allocations: [],
@@ -678,7 +678,7 @@ export default function PaymentsManagementPage() {
             breakdown: info.breakdown,
             academicStanding: info.semesterName,
             availableYears: Array.from(new Set(semesters.filter(s => s.intakeId === info.intakeId).map(s => String(s.year)))),
-            availableSemesters: semesters.filter(s => s.intakeId === info.intakeId && String(s.year) === String(allSemesters.find(s => s.id === info.semesterId)?.year || '1'))
+            availableSemesters: semesters.filter(s => s.intakeId === info.intakeId && String(s.year) === String(semesters.find(s => s.id === info.semesterId)?.year || '1'))
         }]);
         setIsBulkRecordOpen(true);
     };
@@ -925,7 +925,7 @@ export default function PaymentsManagementPage() {
                             </Label>
                             <div className="border rounded-xl overflow-hidden shadow-sm bg-card">
                                 <Table>
-                                    <TableHeader className="bg-muted/50">
+                                    <TableHeader>
                                         <TableRow>
                                             <TableHead className="h-8 text-[10px]">Item Description</TableHead>
                                             <TableHead className="h-8 text-[10px] text-right">Amount (ZMW)</TableHead>
@@ -971,8 +971,8 @@ export default function PaymentsManagementPage() {
                             </Label>
                             <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
                                 <Table>
-                                    <TableHeader className="bg-muted/50">
-                                        <TableRow>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/50">
                                             <TableHead className="h-8 text-[10px]">Date</TableHead>
                                             <TableHead className="h-8 text-[10px]">Reference</TableHead>
                                             <TableHead className="h-8 text-[10px]">Method</TableHead>
