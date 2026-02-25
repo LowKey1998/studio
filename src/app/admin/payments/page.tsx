@@ -32,7 +32,8 @@ import {
     HandCoins,
     History,
     ReceiptText,
-    GraduationCap
+    GraduationCap,
+    ShieldX
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -710,7 +711,7 @@ export default function PaymentsManagementPage() {
                         <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
                         <CardContent className="pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                                <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                 <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={countProgrammeId => setCountProgrammeId(countProgrammeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                                 <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
                             </div>

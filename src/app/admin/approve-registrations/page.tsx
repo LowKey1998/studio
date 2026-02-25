@@ -26,7 +26,7 @@ import { format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from '@/components/checkbox';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
@@ -864,11 +864,11 @@ export default function ApproveRegistrationsPage() {
                                                 </div>
                                                 <div className="flex justify-end gap-2">
                                                     <Button variant="ghost" size="sm" className="text-destructive font-bold" onClick={() => handleClassRequestDecision(req, 'Declined')} disabled={!!actionLoading}>
-                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
+                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
                                                         Decline
                                                     </Button>
                                                     <Button size="sm" className="bg-primary font-bold shadow-md" onClick={() => handleClassRequestDecision(req, 'Approved')} disabled={!!actionLoading}>
-                                                        {actionLoading === req.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4 mr-1" />}
+                                                        {actionLoading === req.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                                                         Approve Enrollment
                                                     </Button>
                                                 </div>
