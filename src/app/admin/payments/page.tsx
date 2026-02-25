@@ -19,7 +19,6 @@ import {
     Clock,
     CalendarDays,
     Wallet,
-    History as HistoryIcon,
     Calendar as CalendarIcon,
     Save,
     Info,
@@ -31,7 +30,6 @@ import {
     TrendingUp,
     ArrowRight,
     HandCoins,
-    UserCheck,
     History,
     ReceiptText,
     GraduationCap
@@ -42,7 +40,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { format, parseISO, startOfDay, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isBefore, isWithinInterval, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -702,7 +700,18 @@ export default function PaymentsManagementPage() {
             </Card>
 
             <div className="grid gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-2 space-y-6">
+                <div className="lg:col-span-3 space-y-6">
+                    <Card className="shadow-md border-primary/10">
+                        <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
+                        <CardContent className="pt-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                                <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={countProgrammeId => setCountProgrammeId(countProgrammeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <Card className="shadow-md">
                         <CardHeader className="border-b">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -799,17 +808,6 @@ export default function PaymentsManagementPage() {
                                     </TableBody>
                                 </Table>
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <div className="space-y-6">
-                    <Card className="shadow-md border-primary/10">
-                        <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
-                        <CardContent className="pt-6 space-y-4">
-                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={countProgrammeId => setCountProgrammeId(countProgrammeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                            <Separator /><div className="text-center p-4 bg-muted/20 rounded-xl border border-dashed"><span className="block text-4xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
                         </CardContent>
                     </Card>
                 </div>
