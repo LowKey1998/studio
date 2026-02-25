@@ -250,7 +250,6 @@ export default function StudentPaymentsPage() {
                         };
                     }
 
-                    // STRICT FILTER: Only successful transactions for this specific invoice
                     const invoiceTransactions = allTransactions.filter(t => t.invoiceId === reg.invoiceId);
                     const totalPaid = invoiceTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
                     const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -292,7 +291,7 @@ export default function StudentPaymentsPage() {
 
     const handleDownloadInvoice = async (p: PaymentSummary) => {
         if (p.isProvisional) {
-            toast({ title: 'Invoice Not Ready', description: 'Official invoices are generated after bursar review. Use this view for projected costs.' });
+            toast({ title: 'Invoice Not Ready', description: 'Official invoices are generated after bursar review.' });
             return;
         }
         setActionLoading(`dl-${p.invoice?.invoiceId}`);

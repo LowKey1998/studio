@@ -436,17 +436,16 @@ export default function ApproveRegistrationsPage() {
                     lateFee: Number(request.lateFee || 0)
                 });
 
-                await update(invoiceRef, {
-                    courses: finalCourses,
-                    totalTuition: Number(breakdown.baseTuition),
-                    totalMandatoryFees: Number(breakdown.totalMandatoryFees),
-                    totalOptionalFees: Number(breakdown.totalOptionalFees),
-                });
+                const updates: Record<string, any> = {};
+                updates[`registrations/${request.userId}/${request.semesterId}/status`] = newStatus;
+                updates[`registrations/${request.userId}/${request.semesterId}/courses`] = finalCourses;
+                
+                updates[`invoices/${request.userId}/${request.invoiceId}/courses`] = finalCourses;
+                updates[`invoices/${request.userId}/${request.invoiceId}/totalTuition`] = Number(breakdown.baseTuition);
+                updates[`invoices/${request.userId}/${request.invoiceId}/totalMandatoryFees`] = Number(breakdown.totalMandatoryFees);
+                updates[`invoices/${request.userId}/${request.invoiceId}/totalOptionalFees`] = Number(breakdown.totalOptionalFees);
 
-                await update(registrationRef, { 
-                    status: newStatus,
-                    courses: finalCourses,
-                });
+                await update(ref(db), updates);
                 
                 createNotification(request.userId, notificationMessage, '/student/registration').catch(() => {});
                 
@@ -571,31 +570,28 @@ export default function ApproveRegistrationsPage() {
             const isApproved = decision === 'approve';
             const newStatus = enrollmentPolicy === 'onApproval' ? 'Completed' : 'Pending Payment';
             
-            const updates: any = {
-                status: newStatus,
-                scholarshipStatus: isApproved ? 'Approved' : 'Denied',
-                applyScholarship: isApproved
-            };
-
-            const invoiceUpdates: any = { applyScholarship: isApproved };
+            const updates: Record<string, any> = {};
+            updates[`registrations/${request.userId}/${request.semesterId}/status`] = newStatus;
+            updates[`registrations/${request.userId}/${request.semesterId}/scholarshipStatus`] = isApproved ? 'Approved' : 'Denied';
+            updates[`registrations/${request.userId}/${request.semesterId}/applyScholarship`] = isApproved;
+            updates[`invoices/${request.userId}/${request.invoiceId}/applyScholarship`] = isApproved;
 
             if (isApproved && scholarship) {
-                updates.scholarshipId = scholarship.id;
-                updates.scholarshipName = scholarship.name;
-                updates.scholarshipPercentage = scholarship.percentage;
+                updates[`registrations/${request.userId}/${request.semesterId}/scholarshipId`] = scholarship.id;
+                updates[`registrations/${request.userId}/${request.semesterId}/scholarshipName`] = scholarship.name;
+                updates[`registrations/${request.userId}/${request.semesterId}/scholarshipPercentage`] = Number(scholarship.percentage);
                 
-                invoiceUpdates.scholarshipId = scholarship.id;
-                invoiceUpdates.scholarshipPercentage = scholarship.percentage;
+                updates[`invoices/${request.userId}/${request.invoiceId}/scholarshipId`] = scholarship.id;
+                updates[`invoices/${request.userId}/${request.invoiceId}/scholarshipPercentage`] = Number(scholarship.percentage);
             } else if (!isApproved) {
-                updates.scholarshipId = null;
-                updates.scholarshipName = null;
-                updates.scholarshipPercentage = null;
-                invoiceUpdates.scholarshipId = null;
-                invoiceUpdates.scholarshipPercentage = null;
+                updates[`registrations/${request.userId}/${request.semesterId}/scholarshipId`] = null;
+                updates[`registrations/${request.userId}/${request.semesterId}/scholarshipName`] = null;
+                updates[`registrations/${request.userId}/${request.semesterId}/scholarshipPercentage`] = null;
+                updates[`invoices/${request.userId}/${request.invoiceId}/scholarshipId`] = null;
+                updates[`invoices/${request.userId}/${request.invoiceId}/scholarshipPercentage`] = null;
             }
 
-            await update(registrationRef, updates);
-            await update(invoiceRef, invoiceUpdates);
+            await update(ref(db), updates);
 
             const msg = isApproved
                 ? `Congratulations! Your scholarship application for ${request.semesterName} has been approved (${scholarship?.name} - ${scholarship?.percentage}% waiver).`

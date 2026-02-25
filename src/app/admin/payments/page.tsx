@@ -144,6 +144,7 @@ type PaymentRecord = {
     availableSemesters?: Semester[];
     breakdown?: FeeBreakdown;
     academicStanding?: string;
+    globalStanding?: string;
 };
 
 type Transaction = {
@@ -215,7 +216,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTerm(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -668,22 +669,24 @@ export default function PaymentsManagementPage() {
                     const intake = allIntakes.find(i => i.id === intakeId);
                     const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
                     
-                    let state = { year: 1, semester: 1 };
+                    let globalStanding = 'Year 1, Sem 1';
                     if (intakeStartStr && calendarSettings) {
-                        state = calculateAcademicState(
+                        const state = calculateAcademicState(
                             intakeStartStr,
                             getCurrentServerDate(),
                             calendarSettings.standardCycles,
                             Object.values(calendarSettings.anomalies || {})
                         );
+                        globalStanding = `Year ${state.year}, Sem ${state.semester}`;
                     }
+                    updatedRow.globalStanding = globalStanding;
                     
                     const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
                     updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
+                    // Resolve latest matching semester for auto-population
                     const latestSemester = studentIntakeSemesters.find(s => 
-                        s.year === state.year && 
-                        s.semesterInYear === state.semester
+                        s.name.includes(globalStanding)
                     );
 
                     if (latestSemester) {
@@ -715,12 +718,15 @@ export default function PaymentsManagementPage() {
                     updatedRow.year = '';
                     updatedRow.semesterId = '';
                     updatedRow.academicStanding = undefined;
+                    updatedRow.globalStanding = undefined;
                     const maxYear = Math.max(...semesters.map(s => s.year), 1);
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
                 if (field === 'amount' || field === 'userId' || field === 'semesterId') {
                     const amountVal = parseFloat(field === 'amount' ? value : updatedRow.amount) || 0;
+                    
+                    // Look up specifically for the target semester of this row
                     const student = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === updatedRow.semesterId);
                     
                     if (student && updatedRow.breakdown) {
@@ -753,6 +759,8 @@ export default function PaymentsManagementPage() {
                         }
                         
                         updatedRow.allocations = autoAllocations;
+                        updatedRow.totalDue = student.totalDue;
+                        updatedRow.totalPaid = student.totalPaid;
                     }
                 }
 
@@ -763,12 +771,27 @@ export default function PaymentsManagementPage() {
     };
 
     const handleQuickPay = (student: StudentPaymentInfo) => {
-        const intake = allIntakes.find(i => i.id === student.intakeId);
+        const studentProfile = allUsers[student.userId];
+        const intakeId = student.intakeId || studentProfile?.intakeId;
+        const intake = allIntakes.find(i => i.id === intakeId);
+        const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
+        
+        let globalStanding = 'N/A';
+        if (intakeStartStr && calendarSettings) {
+            const state = calculateAcademicState(
+                intakeStartStr,
+                getCurrentServerDate(),
+                calendarSettings.standardCycles,
+                Object.values(calendarSettings.anomalies || {})
+            );
+            globalStanding = `Year ${state.year}, Sem ${state.semester}`;
+        }
+
         let availableYears: string[] = [];
         let availableSemesters: Semester[] = [];
-        if (intake) {
-            availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intake.id).map(s => String(s.year)))).sort();
-            availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(semesters.find(sem => sem.id === student.semesterId)?.year || '1'));
+        if (intakeId) {
+            availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intakeId).map(s => String(s.year)))).sort();
+            availableSemesters = semesters.filter(s => s.intakeId === intakeId && String(s.year) === String(semesters.find(sem => sem.id === student.semesterId)?.year || '1'));
         }
 
         const initialRow: PaymentRecord = {
@@ -776,6 +799,7 @@ export default function PaymentsManagementPage() {
             userId: student.userId,
             semesterId: student.semesterId || '',
             academicStanding: student.semesterName,
+            globalStanding,
             year: student.semesterId ? String(semesters.find(s => s.id === student.semesterId)?.year || '1') : '1',
             totalDue: student.totalDue,
             totalPaid: student.totalPaid,
@@ -864,7 +888,6 @@ export default function PaymentsManagementPage() {
                 }
             }
 
-            // Remove any undefined keys to avoid unexpected errors
             const sanitizedUpdates: Record<string, any> = {};
             Object.entries(updates).forEach(([k, v]) => {
                 if (v !== undefined) sanitizedUpdates[k] = v;
@@ -1233,7 +1256,10 @@ export default function PaymentsManagementPage() {
                                         ) : (
                                             <div className="space-y-2">
                                                 <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student..." />
-                                                {row.academicStanding && <Badge variant="secondary" className="text-[9px] uppercase font-bold bg-primary/5 text-primary border-primary/10">Standing: {row.academicStanding}</Badge>}
+                                                <div className="flex flex-wrap gap-2">
+                                                    {row.globalStanding && <Badge variant="secondary" className="text-[9px] uppercase font-bold bg-primary/5 text-primary border-primary/10">Live: {row.globalStanding}</Badge>}
+                                                    {row.academicStanding && row.academicStanding !== row.globalStanding && <Badge variant="outline" className="text-[9px] uppercase font-bold bg-orange-50 text-orange-700 border-orange-200">Record Phase: {row.academicStanding}</Badge>}
+                                                </div>
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-3">
