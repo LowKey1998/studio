@@ -511,6 +511,26 @@ export default function PaymentsManagementPage() {
             if (row.key === key) {
                 const updatedRow = { ...row, [field]: value };
                 
+                const updateDerivedFields = (userId: string, semId: string) => {
+                    const info = paymentInfos.find(p => p.userId === userId && p.semesterId === semId);
+                    if (info) {
+                        updatedRow.totalDue = info.totalDue;
+                        updatedRow.totalPaid = info.totalPaid;
+                        updatedRow.breakdown = info.breakdown;
+                        updatedRow.academicStanding = info.semesterName;
+                    } else {
+                        const sem = semesters.find(s => s.id === semId);
+                        if (sem) {
+                            const tuition = Number(sem.tuitionFee || 0);
+                            const mandatory = Object.values(sem.mandatoryFees || {}).reduce((sum, f: any) => sum + Number(f.amount || 0), 0);
+                            updatedRow.totalDue = tuition + mandatory;
+                            updatedRow.totalPaid = 0;
+                            updatedRow.breakdown = { tuition, mandatory, optional: 0, scholarship: 0, late: 0 };
+                            updatedRow.academicStanding = sem.name;
+                        }
+                    }
+                };
+
                 if (field === 'year') {
                     updatedRow.semesterId = '';
                     if (updatedRow.isNewStudent) {
@@ -540,16 +560,9 @@ export default function PaymentsManagementPage() {
                     const latestSemester = studentIntakeSemesters.find(s => s.name.includes(globalStandingLabel));
                     if (latestSemester) {
                         updatedRow.semesterId = latestSemester.id;
-                        updatedRow.academicStanding = latestSemester.name;
                         updatedRow.year = String(latestSemester.year);
                         updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
-                        
-                        const info = paymentInfos.find(p => p.userId === value && p.semesterId === latestSemester.id);
-                        if (info) {
-                            updatedRow.totalDue = info.totalDue;
-                            updatedRow.totalPaid = info.totalPaid;
-                            updatedRow.breakdown = info.breakdown;
-                        }
+                        updateDerivedFields(value, latestSemester.id);
                     }
                 }
 
@@ -563,25 +576,8 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
-                if (field === 'semesterId' || (field === 'year' && updatedRow.semesterId)) {
-                    const semId = field === 'semesterId' ? value : updatedRow.semesterId;
-                    const info = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === semId);
-                    if (info) {
-                        updatedRow.totalDue = info.totalDue;
-                        updatedRow.totalPaid = info.totalPaid;
-                        updatedRow.breakdown = info.breakdown;
-                        updatedRow.academicStanding = info.semesterName;
-                    } else {
-                        const sem = semesters.find(s => s.id === semId);
-                        if (sem) {
-                            const tuition = Number(sem.tuitionFee || 0);
-                            const mandatory = Object.values(sem.mandatoryFees || {}).reduce((sum, f: any) => sum + Number(f.amount || 0), 0);
-                            updatedRow.totalDue = tuition + mandatory;
-                            updatedRow.totalPaid = 0;
-                            updatedRow.breakdown = { tuition, mandatory, optional: 0, scholarship: 0, late: 0 };
-                            updatedRow.academicStanding = sem.name;
-                        }
-                    }
+                if (field === 'semesterId') {
+                    updateDerivedFields(updatedRow.userId || '', value);
                 }
 
                 if (field === 'amount' || field === 'userId' || field === 'semesterId' || field === 'allocations') {
@@ -705,19 +701,19 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
+            <Card className="shadow-md border-primary/10">
+                <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
+                <CardContent className="pt-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={countProgrammeId => setCountProgrammeId(countProgrammeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
+                    </div>
+                </CardContent>
+            </Card>
+
             <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-3 space-y-6">
-                    <Card className="shadow-md border-primary/10">
-                        <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
-                        <CardContent className="pt-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={countProgrammeId => setCountProgrammeId(countProgrammeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
                     <Card className="shadow-md">
                         <CardHeader className="border-b">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
