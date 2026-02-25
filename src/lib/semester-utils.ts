@@ -103,11 +103,11 @@ export function calculateAcademicState(
 
     // 3. Determine Study Semester (Relative to student start)
     // 1st cycle encountered = Semester 1, 2nd = Semester 2, etc.
-    const studySemester = ((cyclesCounted - 1) % cyclesPerYear) + 1;
+    const studySemester = ((cyclesCounted - 1) % (cyclesPerYear || 1)) + 1;
 
     return { 
         year: Math.max(1, academicYear), 
-        semester: studySemester,
+        semester: studySemester || 1,
         cyclesCounted,
         identifiedMonth: format(intakeDate, 'MMMM'),
         isAnomaly: false

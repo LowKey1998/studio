@@ -28,7 +28,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import jsPDF from 'jspdf';
@@ -122,6 +122,7 @@ export default function StudentPaymentsPage() {
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+    const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -130,6 +131,10 @@ export default function StudentPaymentsPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
+    }, []);
+
+    React.useEffect(() => {
+        onValue(ref(db, '.info/serverTimeOffset'), (snap) => setServerTimeOffset(snap.val() || 0));
     }, []);
 
     const fetchData = React.useCallback(async () => {
@@ -173,7 +178,7 @@ export default function StudentPaymentsPage() {
                 if (intakeStartStr) {
                     const state = calculateAcademicState(
                         intakeStartStr,
-                        new Date(),
+                        new Date(Date.now() + serverTimeOffset),
                         calSettings.standardCycles,
                         Object.values(calSettings.anomalies || {})
                     );
@@ -225,15 +230,11 @@ export default function StudentPaymentsPage() {
                         const billingOutput = calculateBilling({
                             policy: activeSemesterRules.billingPolicy || institutionSettings.billingPolicy || 'course',
                             semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
-                            courses: (reg.courses || []).map((cid: string) => {
-                                const cost = activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0;
-                                return { id: cid, cost: Number(cost) };
-                            }),
+                            courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0) })),
                             mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
                             optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
                             applyScholarship: !!reg.applyScholarship || !!scholarId,
-                            scholarshipPercentage: scholarPerc,
-                            lateFee: 0 
+                            scholarshipPercentage: scholarPerc
                         });
 
                         billingResults = {
@@ -283,7 +284,7 @@ export default function StudentPaymentsPage() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, institutionSettings.billingPolicy, toast]);
+    }, [currentUser, institutionSettings.billingPolicy, serverTimeOffset, toast]);
 
     React.useEffect(() => {
         if (currentUser) fetchData();
