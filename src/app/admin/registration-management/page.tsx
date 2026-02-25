@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -49,8 +48,7 @@ import {
     Tag,
     Receipt,
     ReceiptText,
-    ShieldCheck,
-    Filter
+    ShieldCheck
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';

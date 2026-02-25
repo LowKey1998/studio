@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -67,10 +66,10 @@ export default function ScholarshipAssignmentsPage() {
                 
                 setProgrammes(Object.entries(progs).map(([id, d]:[string, any]) => ({ id, ...d })));
                 setScholarships(Object.entries(schols).map(([id, d]:[string, any]) => ({ id, ...d })));
-                setIntakes(Object.entries(ints).map(([id, d]:[string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
+                setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
                 if (usersSnap.exists()) {
-                    const data = usersSnap.val();
+                    const data = snapshot.val();
                     const list = Object.keys(data)
                         .filter(uid => data[uid].role === 'Student')
                         .map(uid => {
@@ -181,7 +180,7 @@ export default function ScholarshipAssignmentsPage() {
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
                             <div className="relative">
-                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input placeholder="Name or ID..." className="pl-8 h-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
