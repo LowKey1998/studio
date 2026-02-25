@@ -1,4 +1,3 @@
-
 'use client';
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -122,7 +121,7 @@ export default function ParentLoginPage() {
       const { error } = await supabase.auth.verifyOtp({
         phone: finalPhone,
         token: otp,
-        type: 'sms', // Note: verifyOtp type is still 'sms' or 'phone_change' in current Supabase client even if sent via whatsapp channel
+        type: 'sms', 
       });
 
       if (error) throw error;

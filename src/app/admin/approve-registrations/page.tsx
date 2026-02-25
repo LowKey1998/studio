@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -11,27 +10,18 @@ import {
     X, 
     ClipboardCheck, 
     GraduationCap, 
-    AlertCircle, 
-    Edit, 
-    Save, 
-    CheckCircle2, 
-    History, 
-    AlertTriangle, 
-    ArrowRight,
-    UserMinus,
     Info,
     CalendarDays,
-    RotateCcw,
+    History,
+    CheckCircle2,
     BookOpen,
-    Tag,
-    Receipt,
     Clock
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, remove, set, serverTimestamp, push, onValue } from 'firebase/database';
+import { ref, get, update, remove, set, serverTimestamp, push } from 'firebase/database';
 import { format, parseISO, isAfter, addDays } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,7 +59,6 @@ import {
 } from "@/components/ui/select";
 import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 type RegistrationRequest = {
@@ -233,8 +222,8 @@ export default function ApproveRegistrationsPage() {
             if (settingsSnap.exists()) {
                 const settingsData = settingsSnap.val();
                 setEnrollmentPolicy(settingsData.enrollmentPolicy || 'onFullPayment');
-                setIsQuickBooksEnabled(settingsData.integrations?.quickbooks?.enabled);
-                setIsSageEnabled(settingsData.integrations?.sage?.enabled);
+                setIsQuickBooksEnabled(!!settingsData.integrations?.quickbooks?.enabled);
+                setIsSageEnabled(!!settingsData.integrations?.sage?.enabled);
             }
 
             const coursesData = new Map<string, Course>();
@@ -253,7 +242,7 @@ export default function ApproveRegistrationsPage() {
             if(intakesSnap.exists()) Object.entries(intakesSnap.val()).forEach(([id, data]) => intakesData.set(id, {id, ...(data as any)}));
             setAllIntakes(intakesData);
             
-            if(coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val()));
+            if(coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val() || {}));
 
             let scholarshipsList: Scholarship[] = [];
             if (scholarshipsSnap.exists()) {
@@ -279,24 +268,21 @@ export default function ApproveRegistrationsPage() {
 
             // 1. Process Main Registrations
             if (registrationsSnap.exists()) {
-                const allRegistrations = registrationsSnap.val();
+                const allRegistrations = registrationsSnap.val() || {};
                 const pending: RegistrationRequest[] = [], approved: RegistrationRequest[] = [], completed: RegistrationRequest[] = [];
 
-                for (const userId in allRegistrations) {
-                    const userRegistrations = allRegistrations[userId];
+                Object.entries(allRegistrations).forEach(([userId, userRegistrations]: [string, any]) => {
                     const userData = usersMap[userId];
-                    if (!userData) continue;
+                    if (!userData || typeof userRegistrations !== 'object') return;
 
-                    for (const semesterId in userRegistrations) {
-                        const registration = userRegistrations[semesterId];
+                    Object.entries(userRegistrations).forEach(([semesterId, registration]: [string, any]) => {
                         const semesterInfo = semestersData.get(semesterId);
                         
                         if (['Pending Approval', 'Pending Payment', 'Completed'].includes(registration.status)) {
                             const academicHistory: Record<string, 'Passed' | 'Failed'> = {};
                             
-                            for (const prevSemesterId in userRegistrations) {
-                                if(prevSemesterId === semesterId) continue;
-                                const prevReg = userRegistrations[prevSemesterId];
+                            Object.entries(userRegistrations).forEach(([prevSemesterId, prevReg]: [string, any]) => {
+                                if(prevSemesterId === semesterId) return;
                                 if(prevReg.status === 'Completed') {
                                     const coursesArr = getCoursesFromReg(prevReg.courses);
                                     coursesArr.forEach((courseId: string) => {
@@ -304,7 +290,7 @@ export default function ApproveRegistrationsPage() {
                                         academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
                                     });
                                 }
-                            }
+                            });
 
                             const amountPaid = allTransactions
                                 .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
@@ -323,10 +309,10 @@ export default function ApproveRegistrationsPage() {
                                 invoiceId: registration.invoiceId,
                                 registrationDate: registration.registrationDate,
                                 status: registration.status,
-                                applyScholarship: registration.applyScholarship || false,
+                                applyScholarship: !!registration.applyScholarship,
                                 scholarshipStatus: registration.scholarshipStatus,
                                 scholarshipId: registration.scholarshipId,
-                                scholarshipPercentage: registration.scholarshipPercentage || 0,
+                                scholarshipPercentage: Number(registration.scholarshipPercentage || 0),
                                 programmeId: registration.programmeId,
                                 programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
                                 optionalFees: registration.optionalFees || [],
@@ -335,14 +321,14 @@ export default function ApproveRegistrationsPage() {
                                 billingPolicy: semesterInfo?.billingPolicy || 'course',
                                 semesterTuitionFee: Number(semesterInfo?.tuitionFee || 0),
                                 source: registration.source || 'manual',
-                                lateFee: allInvoices[userId]?.[registration.invoiceId]?.lateFee || 0
+                                lateFee: Number(allInvoices[userId]?.[registration.invoiceId]?.lateFee || 0)
                             };
                             if (registration.status === 'Pending Approval') pending.push(requestData);
                             else if (registration.status === 'Pending Payment') approved.push(requestData);
                             else completed.push(requestData);
                         }
-                    }
-                }
+                    });
+                });
                 
                 const groupRequests = (requests: RegistrationRequest[]): GroupedRequests => requests.reduce((acc, req) => {
                     const key = req.semesterName;
@@ -365,7 +351,7 @@ export default function ApproveRegistrationsPage() {
 
             // 2. Process Class Enrollment Requests
             if (classReqsSnap.exists()) {
-                const reqs = Object.entries(classReqsSnap.val()).map(([id, data]: [string, any]) => {
+                const reqs = Object.entries(classReqsSnap.val() || {}).map(([id, data]: [string, any]) => {
                     const userId = data.userId;
                     const semId = data.semesterId;
                     const studentReg = registrationsSnap.val()?.[userId]?.[semId];
@@ -440,17 +426,20 @@ export default function ApproveRegistrationsPage() {
                     semesterTuition: request.semesterTuitionFee,
                     courses: finalCourses.map(id => ({ id, cost: allCourses.get(id)?.cost || 0 })),
                     mandatoryFees: Array.from(allMandatoryFees.values()),
-                    optionalFees: (request.optionalFees || []).map(id => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: allOptionalFees.get(id)?.amount || 0 })),
+                    optionalFees: (request.optionalFees || []).map(id => ({ 
+                        name: allOptionalFees.get(id)?.name || 'Fee', 
+                        amount: Number(allOptionalFees.get(id)?.amount || 0) 
+                    })),
                     applyScholarship: !!request.applyScholarship,
                     scholarshipPercentage: request.scholarshipPercentage || 0,
-                    lateFee: request.lateFee || 0
+                    lateFee: Number(request.lateFee || 0)
                 });
 
                 await update(invoiceRef, {
                     courses: finalCourses,
-                    totalTuition: breakdown.baseTuition,
-                    totalMandatoryFees: breakdown.totalMandatoryFees,
-                    totalOptionalFees: breakdown.totalOptionalFees,
+                    totalTuition: Number(breakdown.baseTuition),
+                    totalMandatoryFees: Number(breakdown.totalMandatoryFees),
+                    totalOptionalFees: Number(breakdown.totalOptionalFees),
                 });
 
                 await update(registrationRef, { 
@@ -458,7 +447,7 @@ export default function ApproveRegistrationsPage() {
                     courses: finalCourses,
                 });
                 
-                await createNotification(request.userId, notificationMessage, '/student/registration');
+                createNotification(request.userId, notificationMessage, '/student/registration').catch(() => {});
                 
                 toast({
                     title: 'Registration Approved',
@@ -474,18 +463,19 @@ export default function ApproveRegistrationsPage() {
                     description: `Invoice for ${request.semesterName}`,
                 };
                 
-                if(isQuickBooksEnabled) await syncInvoiceToQuickbooks(syncData).catch(() => {});
-                if(isSageEnabled) await syncInvoiceToSage(syncData as any).catch(() => {});
+                if(isQuickBooksEnabled) syncInvoiceToQuickbooks(syncData).catch(() => {});
+                if(isSageEnabled) syncInvoiceToSage(syncData as any).catch(() => {});
 
             } else { 
                 await remove(registrationRef);
-                await remove(invoiceRef);
+                if (request.invoiceId) await remove(invoiceRef);
                 
-                await createNotification(
+                createNotification(
                     request.userId,
                     `Your course registration for ${request.semesterName} has been declined. Please review and resubmit.`,
                     '/student/registration'
-                );
+                ).catch(() => {});
+
                 toast({
                     variant: 'destructive',
                     title: 'Registration Declined',
@@ -529,26 +519,26 @@ export default function ApproveRegistrationsPage() {
                         optionalFees: (currentReg.optionalFees || []).map((id:string) => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: allOptionalFees.get(id)?.amount || 0 })),
                         applyScholarship: !!currentReg.applyScholarship,
                         scholarshipPercentage: currentReg.scholarshipPercentage || 0,
-                        lateFee: invoiceSnap.val().lateFee || 0
+                        lateFee: Number(invoiceSnap.val().lateFee || 0)
                     });
 
                     await update(invoiceRef, { 
                         courses: updatedCourses,
-                        totalTuition: breakdown.baseTuition 
+                        totalTuition: Number(breakdown.baseTuition) 
                     });
                 }
 
-                await createNotification(
+                createNotification(
                     request.userId,
                     `Your request to enroll in ${request.courseCode} has been approved.`,
                     '/student/classes'
-                );
+                ).catch(() => {});
             } else {
-                await createNotification(
+                createNotification(
                     request.userId,
                     `Your request to enroll in ${request.courseCode} was not approved.`,
                     '/student/registration'
-                );
+                ).catch(() => {});
             }
 
             await update(ref(db, `classEnrollmentRequests/${request.id}`), { status: decision });
@@ -610,7 +600,7 @@ export default function ApproveRegistrationsPage() {
                 ? `Congratulations! Your scholarship application for ${request.semesterName} has been approved (${scholarship?.name} - ${scholarship?.percentage}% waiver).`
                 : `Your scholarship application for ${request.semesterName} was not approved. The full tuition amount is now due.`;
 
-            await createNotification(request.userId, msg, '/student/registration');
+            createNotification(request.userId, msg, '/student/registration').catch(() => {});
             
             toast({ title: `Scholarship ${isApproved ? 'Approved' : 'Denied'}` });
             fetchRequests();
@@ -651,11 +641,12 @@ export default function ApproveRegistrationsPage() {
 
             await update(ref(db), updates);
 
-             await createNotification(
+             createNotification(
                 request.userId,
                 `Your registration for ${request.semesterName} has been manually approved and completed by an admin. You are now enrolled.`,
                 '/student/classes'
-            );
+            ).catch(() => {});
+
             toast({
                 title: 'Student Enrolled',
                 description: `${request.studentName} has been manually enrolled for ${request.semesterName}.`,
@@ -698,10 +689,10 @@ export default function ApproveRegistrationsPage() {
                                     semesterTuition: request.semesterTuitionFee,
                                     courses: activeCourses.map(id => ({ id, cost: allCourses.get(id)?.cost || 0 })),
                                     mandatoryFees: Array.from(allMandatoryFees.values()),
-                                    optionalFees: (request.optionalFees || []).map(id => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: allOptionalFees.get(id)?.amount || 0 })),
+                                    optionalFees: (request.optionalFees || []).map(id => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: Number(allOptionalFees.get(id)?.amount || 0) })),
                                     applyScholarship: !!request.applyScholarship,
-                                    scholarshipPercentage: request.scholarshipPercentage || 0,
-                                    lateFee: request.lateFee || 0
+                                    scholarshipPercentage: Number(request.scholarshipPercentage || 0),
+                                    lateFee: Number(request.lateFee || 0)
                                 });
                                 
                                 const regDateValid = request.registrationDate && !isNaN(new Date(request.registrationDate).getTime());
@@ -876,11 +867,11 @@ export default function ApproveRegistrationsPage() {
                                                 </div>
                                                 <div className="flex justify-end gap-2">
                                                     <Button variant="ghost" size="sm" className="text-destructive font-bold" onClick={() => handleClassRequestDecision(req, 'Declined')} disabled={!!actionLoading}>
-                                                        {actionLoading === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
+                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
                                                         Decline
                                                     </Button>
                                                     <Button size="sm" className="bg-primary font-bold shadow-md" onClick={() => handleClassRequestDecision(req, 'Approved')} disabled={!!actionLoading}>
-                                                        {actionLoading === request.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4 mr-1" />}
+                                                        {actionLoading === req.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4 mr-1" />}
                                                         Approve Enrollment
                                                     </Button>
                                                 </div>
