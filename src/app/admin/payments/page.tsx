@@ -216,7 +216,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         value={search} 
-                        onChange={e => setSearchTerm(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -327,7 +327,6 @@ export default function PaymentsManagementPage() {
         let remaining = totalPaid;
         const paid: string[] = [];
         
-        // 1. Mandatory
         if (breakdown.mandatoryItems) {
             for (const f of breakdown.mandatoryItems) {
                 if (remaining >= f.amount) {
@@ -336,7 +335,6 @@ export default function PaymentsManagementPage() {
                 }
             }
         }
-        // 2. Optional
         if (breakdown.optionalItems) {
             for (const f of breakdown.optionalItems) {
                 if (remaining >= f.amount) {
@@ -345,7 +343,6 @@ export default function PaymentsManagementPage() {
                 }
             }
         }
-        // 3. Tuition
         const netTuition = (breakdown.tuition || 0) - (breakdown.scholarship || 0);
         if (remaining >= netTuition && netTuition > 0) {
             paid.push('Tuition');
@@ -725,8 +722,6 @@ export default function PaymentsManagementPage() {
 
                 if (field === 'amount' || field === 'userId' || field === 'semesterId') {
                     const amountVal = parseFloat(field === 'amount' ? value : updatedRow.amount) || 0;
-                    
-                    // Look up specifically for the target semester of this row
                     const student = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === updatedRow.semesterId);
                     
                     if (student && updatedRow.breakdown) {
@@ -734,7 +729,6 @@ export default function PaymentsManagementPage() {
                         let remaining = cumulativePaid;
                         const autoAllocations: string[] = [];
 
-                        // 1. Mandatory
                         if (updatedRow.breakdown.mandatoryItems) {
                             for (const f of updatedRow.breakdown.mandatoryItems) {
                                 if (remaining >= f.amount) {
@@ -743,7 +737,6 @@ export default function PaymentsManagementPage() {
                                 }
                             }
                         }
-                        // 2. Optional
                         if (updatedRow.breakdown.optionalItems) {
                             for (const f of updatedRow.breakdown.optionalItems) {
                                 if (remaining >= f.amount) {
@@ -752,7 +745,6 @@ export default function PaymentsManagementPage() {
                                 }
                             }
                         }
-                        // 3. Tuition
                         const netTuition = updatedRow.breakdown.tuition - updatedRow.breakdown.scholarship;
                         if (remaining >= netTuition && netTuition > 0) {
                             autoAllocations.push('Tuition');
@@ -1159,7 +1151,7 @@ export default function PaymentsManagementPage() {
                                                                 <div className="flex justify-between"><span>Actual Paid:</span><span className={cn(info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span></div>
                                                                 <Separator className="my-2" />
                                                                 <div className="space-y-1.5"><span className="text-[9px] font-black opacity-40">Active Blocks:</span>
-                                                                    <div className="flex justify-between"><span>Registration</span> {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                                    <div className="flex justify-between"><span>Reg. Window</span> {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
                                                                     <div className="flex justify-between"><span>Exam Results</span> {restrictions.results && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
                                                                 </div>
                                                             </div>
