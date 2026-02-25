@@ -745,7 +745,7 @@ export default function ApproveRegistrationsPage() {
                                     </CardHeader>
                                     <CardContent className="p-4 space-y-4">
                                         <div className="flex flex-col gap-2">
-                                            <Label className="text-[10px] uppercase text-muted-foreground font-black tracking-[0.2em] mb-2">Class Roster Configuration</Label>
+                                            <Label className="text-[10px] font-black uppercase text-muted-foreground font-black tracking-[0.2em] mb-2">Class Roster Configuration</Label>
                                             <div className="grid gap-2">
                                                 {Array.from(allCourses.values()).filter(c => c.status === 'active' && (activeCourses.includes(c.id) || request.courseIds.includes(c.id))).map(course => {
                                                     const history = request.academicHistory[course.id];

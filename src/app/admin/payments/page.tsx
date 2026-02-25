@@ -396,6 +396,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // IMPORTANT: Filter transactions STRICTLY by invoiceId
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
