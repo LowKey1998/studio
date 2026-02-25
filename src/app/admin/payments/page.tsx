@@ -75,7 +75,7 @@ import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { calculateBilling } from '@/lib/billing-utils';
+import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -127,6 +127,8 @@ type PaymentRecord = {
     key: number;
     userId?: string;
     isNewStudent?: boolean;
+    tempId?: string;
+    tempName?: string;
     tempStudentId?: string;
     tempStudentName?: string;
     year?: string;
@@ -285,6 +287,8 @@ export default function PaymentsManagementPage() {
 
     const { toast } = useToast();
 
+    const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
+
     const dataRefs = React.useMemo(() => ({
         users: ref(db, 'users'),
         registrations: ref(db, 'registrations'),
@@ -323,7 +327,7 @@ export default function PaymentsManagementPage() {
         const configsData = store.configs || {};
         const scholsData = store.scholarships || {};
 
-        const now = new Date(Date.now() + serverTimeOffset);
+        const now = getCurrentServerDate();
 
         const transactionsList: Transaction[] = [];
         for (const txId in txsData) {
@@ -460,7 +464,7 @@ export default function PaymentsManagementPage() {
     }, [userData?.uid, dataRefs, computeDerived]);
 
     const filteredData = React.useMemo(() => {
-        const now = startOfDay(new Date(Date.now() + serverTimeOffset));
+        const now = startOfDay(getCurrentServerDate());
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                 p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
@@ -488,7 +492,7 @@ export default function PaymentsManagementPage() {
             
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && balanceMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, serverTimeOffset, semesters]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, semesters]);
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -535,7 +539,7 @@ export default function PaymentsManagementPage() {
                     
                     let globalStandingLabel = 'Year 1 Semester 1';
                     if (intakeStartStr && calendarSettings) {
-                        const state = calculateAcademicState(intakeStartStr, new Date(Date.now() + serverTimeOffset), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+                        const state = calculateAcademicState(intakeStartStr, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
                         globalStandingLabel = `Year ${state.year} Semester ${state.semester}`;
                     }
                     updatedRow.globalStanding = globalStandingLabel;
@@ -607,8 +611,28 @@ export default function PaymentsManagementPage() {
                 if (row.isNewStudent) {
                     const reqRef = push(ref(db, 'studentCreationRequests'));
                     const txRef = push(ref(db, 'transactions'));
-                    updates[`studentCreationRequests/${reqRef.key}`] = { tempId: row.tempId || row.tempStudentId || null, tempName: row.tempName || row.tempStudentName || null, targetSemesterId: row.semesterId || null, amountPaid: amount, status: 'pending', timestamp: Date.now() };
-                    updates[`transactions/${txRef.key}`] = { transactionId: `DEP-${Date.now()}`, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash/Direct', purpose: row.allocations.join(', ') || 'Initial Deposit', recordedBy: userData.name, isUnlinked: true, requestId: reqRef.key, senderName: row.tempName || row.tempStudentName || null, tempId: row.tempId || row.tempStudentId || null };
+                    updates[`studentCreationRequests/${reqRef.key}`] = { 
+                        tempId: row.tempId || row.tempStudentId || null, 
+                        tempName: row.tempName || row.tempStudentName || null, 
+                        targetSemesterId: row.semesterId || null, 
+                        amountPaid: amount, 
+                        status: 'pending', 
+                        timestamp: Date.now() 
+                    };
+                    updates[`transactions/${txRef.key}`] = { 
+                        transactionId: `DEP-${Date.now()}`, 
+                        userId: 'unlinked', 
+                        amount, 
+                        paymentDate: now, 
+                        status: 'successful', 
+                        method: 'Cash/Direct', 
+                        purpose: row.allocations.join(', ') || 'Initial Deposit', 
+                        recordedBy: userData.name, 
+                        isUnlinked: true, 
+                        requestId: reqRef.key, 
+                        senderName: row.tempName || row.tempStudentName || null, 
+                        tempId: row.tempId || row.tempStudentId || null 
+                    };
                 } else if (row.userId) {
                     const txRef = push(ref(db, 'transactions'));
                     updates[`transactions/${txRef.key}`] = { 
@@ -688,7 +712,7 @@ export default function PaymentsManagementPage() {
             if (isThisMonth(d)) acc.monthTotal += t.amount;
             return acc;
         }, { todayTotal: 0, weekTotal: 0, monthTotal: 0 });
-    }, [rawTransactions]);
+    }, [rawTransactions, serverTimeOffset]);
 
     const calculatedStudentCount = React.useMemo(() => {
         return allStudents.filter(s => {

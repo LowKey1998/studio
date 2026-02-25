@@ -108,6 +108,12 @@ export default function LibraryPage() {
 
         if (isScannerActive && !scanner) {
             const start = async () => {
+                const element = document.getElementById(SCANNER_ID);
+                if (!element) {
+                    console.warn("Scanner element not ready, retrying...");
+                    return;
+                }
+
                 try {
                     qrScanner = new Html5Qrcode(SCANNER_ID);
                     setScanner(qrScanner);
@@ -125,8 +131,7 @@ export default function LibraryPage() {
                     setIsScannerActive(false);
                 }
             };
-            // Small delay to ensure React has rendered the #isbn-scanner-region div
-            const timer = setTimeout(start, 150);
+            const timer = setTimeout(start, 250);
             return () => {
                 clearTimeout(timer);
                 if (qrScanner) {
@@ -134,7 +139,7 @@ export default function LibraryPage() {
                 }
             };
         }
-    }, [isScannerActive]);
+    }, [isScannerActive, scanner]);
     
     const resetForm = () => {
         setTitle('');
