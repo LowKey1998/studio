@@ -33,7 +33,8 @@ import {
     HandCoins,
     UserCheck,
     History,
-    ReceiptText
+    ReceiptText,
+    GraduationCap
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
