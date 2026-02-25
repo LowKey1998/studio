@@ -33,7 +33,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth, startOfDay } from 'date-fns';
@@ -67,7 +67,7 @@ import autoTable from 'jspdf-autotable';
 import { useAuth } from '@/hooks/use-auth';
 import { Calendar } from '@/components/ui/calendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
+import { parseIntakeDate, calculateAcademicState, calculateSemesterDateRange } from '@/lib/semester-utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -512,7 +512,7 @@ export default function PaymentsManagementPage() {
 
         setPaymentInfos(Array.from(studentPaymentMap.values()));
         setLoading(false);
-    }, [serverTimeOffset]);
+    }, [serverTimeOffset, calculatePaidItems]);
 
     React.useEffect(() => {
         if (!userData?.uid) return;
@@ -681,7 +681,6 @@ export default function PaymentsManagementPage() {
                     const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
                     updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
-                    // Resolve latest matching semester for auto-population
                     const latestSemester = studentIntakeSemesters.find(s => 
                         s.name.includes(globalStanding)
                     );
@@ -720,12 +719,23 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
+                if (field === 'semesterId') {
+                    const studentInfo = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === value);
+                    if (studentInfo) {
+                        updatedRow.totalDue = studentInfo.totalDue;
+                        updatedRow.totalPaid = studentInfo.totalPaid;
+                        updatedRow.breakdown = studentInfo.breakdown;
+                        updatedRow.academicStanding = studentInfo.semesterName;
+                        updatedRow.allocations = calculatePaidItems(studentInfo.totalPaid, studentInfo.breakdown);
+                    }
+                }
+
                 if (field === 'amount' || field === 'userId' || field === 'semesterId') {
                     const amountVal = parseFloat(field === 'amount' ? value : updatedRow.amount) || 0;
-                    const student = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === updatedRow.semesterId);
+                    const studentInfo = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === updatedRow.semesterId);
                     
-                    if (student && updatedRow.breakdown) {
-                        const cumulativePaid = student.totalPaid + amountVal;
+                    if (studentInfo && updatedRow.breakdown) {
+                        const cumulativePaid = studentInfo.totalPaid + amountVal;
                         let remaining = cumulativePaid;
                         const autoAllocations: string[] = [];
 
@@ -751,8 +761,8 @@ export default function PaymentsManagementPage() {
                         }
                         
                         updatedRow.allocations = autoAllocations;
-                        updatedRow.totalDue = student.totalDue;
-                        updatedRow.totalPaid = student.totalPaid;
+                        updatedRow.totalDue = studentInfo.totalDue;
+                        updatedRow.totalPaid = studentInfo.totalPaid;
                     }
                 }
 
