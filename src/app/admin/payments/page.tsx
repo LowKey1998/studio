@@ -678,6 +678,26 @@ export default function PaymentsManagementPage() {
         setIsBulkRecordOpen(true);
     };
 
+    const cashFlowStats = React.useMemo(() => {
+        const now = getCurrentServerDate();
+        const today = format(now, 'yyyy-MM-dd');
+        return rawTransactions.reduce((acc, t) => {
+            const d = parseISO(t.paymentDate);
+            if (format(d, 'yyyy-MM-dd') === today) acc.todayTotal += t.amount;
+            if (isThisWeek(d)) acc.weekTotal += t.amount;
+            if (isThisMonth(d)) acc.monthTotal += t.amount;
+            return acc;
+        }, { todayTotal: 0, weekTotal: 0, monthTotal: 0 });
+    }, [rawTransactions]);
+
+    const calculatedStudentCount = React.useMemo(() => {
+        return allStudents.filter(s => {
+            const matchesIntake = countIntakeId === 'all' || s.intakeId === countIntakeId;
+            const matchesProgramme = countProgrammeId === 'all' || s.programmeId === countProgrammeId;
+            return matchesIntake && matchesProgramme;
+        }).length;
+    }, [allStudents, countIntakeId, countProgrammeId]);
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">

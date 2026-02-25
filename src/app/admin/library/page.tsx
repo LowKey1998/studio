@@ -101,6 +101,40 @@ export default function LibraryPage() {
             }
         };
     }, [scanner]);
+
+    // Handle scanner initialization after DOM update
+    React.useEffect(() => {
+        let qrScanner: Html5Qrcode | null = null;
+
+        if (isScannerActive && !scanner) {
+            const start = async () => {
+                try {
+                    qrScanner = new Html5Qrcode(SCANNER_ID);
+                    setScanner(qrScanner);
+                    await qrScanner.start(
+                        { facingMode: "environment" },
+                        { fps: 10, qrbox: { width: 250, height: 150 } },
+                        (decodedText) => {
+                            setLookupIsbn(decodedText);
+                            fetchBookByIsbn(decodedText);
+                        },
+                        () => {}
+                    );
+                } catch (err) {
+                    console.error("Scanner failed to start:", err);
+                    setIsScannerActive(false);
+                }
+            };
+            // Small delay to ensure React has rendered the #isbn-scanner-region div
+            const timer = setTimeout(start, 150);
+            return () => {
+                clearTimeout(timer);
+                if (qrScanner) {
+                    qrScanner.stop().catch(console.error);
+                }
+            };
+        }
+    }, [isScannerActive]);
     
     const resetForm = () => {
         setTitle('');
@@ -200,19 +234,7 @@ export default function LibraryPage() {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             setHasCameraPermission(true);
             stream.getTracks().forEach(track => track.stop());
-
             setIsScannerActive(true);
-            const qrScanner = new Html5Qrcode(SCANNER_ID);
-            setScanner(qrScanner);
-            await qrScanner.start(
-                { facingMode: "environment" },
-                { fps: 10, qrbox: { width: 250, height: 150 } },
-                (decodedText) => {
-                    setLookupIsbn(decodedText);
-                    fetchBookByIsbn(decodedText);
-                },
-                () => {}
-            );
         } catch (err) {
             console.error(err);
             setHasCameraPermission(false);
