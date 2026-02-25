@@ -325,6 +325,42 @@ export default function PaymentsManagementPage() {
 
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
+    /**
+     * Identifies which items are considered "paid" by a given total amount.
+     * Follows priority: Mandatory -> Optional -> Tuition.
+     */
+    const calculatePaidItems = React.useCallback((totalPaid: number, breakdown: FeeBreakdown) => {
+        let remaining = totalPaid;
+        const paid: string[] = [];
+        
+        // 1. Mandatory
+        if (breakdown.mandatoryItems) {
+            for (const f of breakdown.mandatoryItems) {
+                if (remaining >= f.amount) {
+                    paid.push(f.name);
+                    remaining -= f.amount;
+                }
+            }
+        }
+        // 2. Optional
+        if (breakdown.optionalItems) {
+            for (const f of breakdown.optionalItems) {
+                if (remaining >= f.amount) {
+                    paid.push(f.name);
+                    remaining -= f.amount;
+                }
+            }
+        }
+        // 3. Tuition
+        const netTuition = (breakdown.tuition || 0) - (breakdown.scholarship || 0);
+        if (remaining >= netTuition && netTuition > 0) {
+            paid.push('Tuition');
+            remaining -= netTuition;
+        }
+        
+        return paid;
+    }, []);
+
     React.useEffect(() => {
         if (!userData?.uid) return;
         
@@ -523,7 +559,7 @@ export default function PaymentsManagementPage() {
         }));
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [userData?.uid, serverTimeOffset, dataRefs]);
+    }, [userData?.uid, serverTimeOffset, dataRefs, computeDerived]);
 
     const filteredData = React.useMemo(() => {
         const now = startOfDay(getCurrentServerDate());
@@ -672,11 +708,8 @@ export default function PaymentsManagementPage() {
                             updatedRow.totalPaid = paymentInfo.totalPaid;
                             updatedRow.breakdown = paymentInfo.breakdown;
                             
-                            // Auto-load checkbox status: Pre-select everything that makes up the bill
-                            const autoAllocations = ['Tuition'];
-                            paymentInfo.breakdown.mandatoryItems?.forEach(f => autoAllocations.push(f.name));
-                            paymentInfo.breakdown.optionalItems?.forEach(f => autoAllocations.push(f.name));
-                            updatedRow.allocations = autoAllocations;
+                            // Load Initial Checkbox status using the Checking Feature logic
+                            updatedRow.allocations = calculatePaidItems(paymentInfo.totalPaid, paymentInfo.breakdown);
                         }
                     } else if (studentIntakeSemesters.length > 0) {
                         const firstSem = studentIntakeSemesters[0];
@@ -698,18 +731,14 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
-                if (field === 'semesterId' && !updatedRow.isNewStudent && updatedRow.userId) {
-                    const paymentInfo = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === value);
-                    if (paymentInfo) {
-                        updatedRow.totalDue = paymentInfo.totalDue;
-                        updatedRow.totalPaid = paymentInfo.totalPaid;
-                        updatedRow.breakdown = paymentInfo.breakdown;
-                        
-                        // Auto-load checkbox status for changed semester
-                        const autoAllocations = ['Tuition'];
-                        paymentInfo.breakdown.mandatoryItems?.forEach(f => autoAllocations.push(f.name));
-                        paymentInfo.breakdown.optionalItems?.forEach(f => autoAllocations.push(f.name));
-                        updatedRow.allocations = autoAllocations;
+                // --- THE CHECKING FEATURE LOGIC ---
+                // Automatically update the checkbox status based on what the NEW TOTAL paid will cover
+                if (field === 'amount' || field === 'userId' || field === 'semesterId') {
+                    const student = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === updatedRow.semesterId);
+                    if (student && updatedRow.breakdown) {
+                        const currentAmount = parseFloat(updatedRow.amount) || 0;
+                        const projectedTotal = (student.totalPaid || 0) + currentAmount;
+                        updatedRow.allocations = calculatePaidItems(projectedTotal, updatedRow.breakdown);
                     }
                 }
 
@@ -728,10 +757,6 @@ export default function PaymentsManagementPage() {
             availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(semesters.find(sem => sem.id === student.semesterId)?.year || '1'));
         }
 
-        const autoAllocations = ['Tuition'];
-        student.breakdown.mandatoryItems?.forEach(f => autoAllocations.push(f.name));
-        student.breakdown.optionalItems?.forEach(f => autoAllocations.push(f.name));
-
         const initialRow: PaymentRecord = {
             key: Date.now(),
             userId: student.userId,
@@ -743,7 +768,7 @@ export default function PaymentsManagementPage() {
             breakdown: student.breakdown,
             amount: '',
             comment: '',
-            allocations: autoAllocations,
+            allocations: calculatePaidItems(student.totalPaid, student.breakdown), // Load existing paid status
             availableYears,
             availableSemesters
         };
