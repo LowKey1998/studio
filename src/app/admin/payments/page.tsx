@@ -530,25 +530,25 @@ export default function PaymentsManagementPage() {
                 if (field === 'userId' && !updatedRow.isNewStudent) {
                     const studentProfile = allUsers[value];
                     const intakeId = studentProfile?.intakeId;
-                    const intake = allIntakes.find(i => i.id === intakeId);
-                    const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
-                    
-                    let globalStandingLabel = 'Year 1 Semester 1';
-                    if (intakeStartStr && calendarSettings) {
-                        const state = calculateAcademicState(intakeStartStr, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-                        globalStandingLabel = `Year ${state.year} Semester ${state.semester}`;
-                    }
-                    updatedRow.globalStanding = globalStandingLabel;
-                    
                     const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
                     updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
-                    const latestSemester = studentIntakeSemesters.find(s => s.name.includes(globalStandingLabel));
-                    if (latestSemester) {
-                        updatedRow.semesterId = latestSemester.id;
-                        updatedRow.year = String(latestSemester.year);
-                        updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
-                        updateDerivedFields(value, latestSemester.id);
+                    if (!updatedRow.semesterId) {
+                        const intakeStartStr = parseIntakeDate(allIntakes.find(i => i.id === intakeId)?.name || '');
+                        let globalStandingLabel = 'Year 1 Semester 1';
+                        if (intakeStartStr && calendarSettings) {
+                            const state = calculateAcademicState(intakeStartStr, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+                            globalStandingLabel = `Year ${state.year} Semester ${state.semester}`;
+                        }
+                        const latestSemester = studentIntakeSemesters.find(s => s.name.includes(globalStandingLabel));
+                        if (latestSemester) {
+                            updatedRow.semesterId = latestSemester.id;
+                            updatedRow.year = String(latestSemester.year);
+                            updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
+                            updateDerivedFields(value, latestSemester.id);
+                        }
+                    } else {
+                        updateDerivedFields(value, updatedRow.semesterId);
                     }
                 }
 

@@ -109,9 +109,7 @@ export default function LibraryPage() {
         if (isScannerActive && !scanner) {
             const start = async () => {
                 const element = document.getElementById(SCANNER_ID);
-                if (!element) {
-                    return;
-                }
+                if (!element) return;
 
                 try {
                     qrScanner = new Html5Qrcode(SCANNER_ID);
@@ -133,9 +131,7 @@ export default function LibraryPage() {
             const timer = setTimeout(start, 300);
             return () => {
                 clearTimeout(timer);
-                if (qrScanner) {
-                    qrScanner.stop().catch(console.error);
-                }
+                if (qrScanner) qrScanner.stop().catch(console.error);
             };
         }
     }, [isScannerActive, scanner]);
@@ -152,9 +148,7 @@ export default function LibraryPage() {
         setEditingBook(null);
         setLookupIsbn('');
         setHasCameraPermission(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
+        if (fileInputRef.current) fileInputRef.current.value = "";
         if (isScannerActive) stopScanner();
     };
 
@@ -166,7 +160,7 @@ export default function LibraryPage() {
             } catch (err) {
                 console.error(err);
             } finally {
-                setIsScannerActive(false);
+                 setIsScannerActive(false);
             }
         }
     };
@@ -300,12 +294,12 @@ export default function LibraryPage() {
 
     const handleDeleteBook = async () => {
         if (!editingBook) return;
-        if (!window.confirm("Are you sure you want to permanently delete this book? This action cannot be undone.")) return;
+        if (!window.confirm("Are you sure? This action cannot be undone.")) return;
         
         setFormLoading(true);
         try {
             await remove(ref(db, `libraryBooks/${editingBook.id}`));
-            toast({ title: 'Book Deleted', description: `${editingBook.title} has been removed from the catalog.` });
+            toast({ title: 'Book Deleted' });
             setIsDialogOpen(false);
             resetForm();
         } catch(e: any) {
@@ -345,7 +339,7 @@ export default function LibraryPage() {
                                             </Label>
                                             <div className="flex gap-2">
                                                 <Input 
-                                                    placeholder="Enter ISBN-10 or ISBN-13..." 
+                                                    placeholder="Enter ISBN..." 
                                                     value={lookupIsbn}
                                                     onChange={e => setLookupIsbn(e.target.value)}
                                                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), fetchBookByIsbn(lookupIsbn))}
@@ -364,9 +358,7 @@ export default function LibraryPage() {
                                                 <Alert variant="destructive" className="mt-2">
                                                     <AlertCircle className="h-4 w-4" />
                                                     <AlertTitle>Camera Access Required</AlertTitle>
-                                                    <AlertDescription>
-                                                        Please allow camera access in your browser settings to use the scanner.
-                                                    </AlertDescription>
+                                                    <AlertDescription>Enable camera permissions in your browser settings.</AlertDescription>
                                                 </Alert>
                                             )}
                                         </div>
@@ -374,33 +366,15 @@ export default function LibraryPage() {
                                         <Separator />
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <Label htmlFor="title">Title *</Label>
-                                                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={formLoading} required />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label htmlFor="author">Author *</Label>
-                                                <Input id="author" value={author} onChange={(e) => setAuthor(e.target.value)} disabled={formLoading} required />
-                                            </div>
+                                            <div className="space-y-1"><Label htmlFor="title">Title *</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={formLoading} required /></div>
+                                            <div className="space-y-1"><Label htmlFor="author">Author *</Label><Input id="author" value={author} onChange={(e) => setAuthor(e.target.value)} disabled={formLoading} required /></div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <Label htmlFor="genre">Genre / Category</Label>
-                                            <Input id="genre" value={genre} onChange={(e) => setGenre(e.target.value)} disabled={formLoading} />
-                                        </div>
+                                        <div className="space-y-1"><Label htmlFor="genre">Genre / Category</Label><Input id="genre" value={genre} onChange={(e) => setGenre(e.target.value)} disabled={formLoading} /></div>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <Label htmlFor="year">Year Published</Label>
-                                                <Input id="year" type="number" value={year} onChange={(e) => setYear(e.target.value)} disabled={formLoading} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label htmlFor="count">Copies in Inventory</Label>
-                                                <Input id="count" type="number" placeholder="1" value={count} onChange={(e) => setCount(e.target.value)} disabled={formLoading} />
-                                            </div>
+                                            <div className="space-y-1"><Label htmlFor="year">Year Published</Label><Input id="year" type="number" value={year} onChange={(e) => setYear(e.target.value)} disabled={formLoading} /></div>
+                                            <div className="space-y-1"><Label htmlFor="count">Copies</Label><Input id="count" type="number" placeholder="1" value={count} onChange={(e) => setCount(e.target.value)} disabled={formLoading} /></div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <Label htmlFor="barcode">Internal Barcode</Label>
-                                            <Input id="barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={formLoading} />
-                                        </div>
+                                        <div className="space-y-1"><Label htmlFor="barcode">Barcode</Label><Input id="barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={formLoading} /></div>
                                         <div className="space-y-1">
                                             <Label>Book Cover</Label>
                                             <div className="flex items-center gap-4">
@@ -408,31 +382,19 @@ export default function LibraryPage() {
                                                     {imageUrl ? <img src={imageUrl} alt="preview" className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-muted-foreground"><Library className="h-6 w-6 opacity-20"/></div>}
                                                 </div>
                                                 <div className="flex-1 space-y-2">
-                                                    <Input id="imageUrl" placeholder="Image URL (Auto-fills from ISBN)" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={formLoading || !!imageFile} className="text-xs h-8" />
-                                                    <Input 
-                                                        id="imageFile" 
-                                                        type="file"
-                                                        accept="image/*"
-                                                        onChange={handleFileChange}
-                                                        className="h-8 text-xs file:h-full file:text-[10px] file:px-2"
-                                                        ref={fileInputRef}
-                                                        disabled={formLoading}
-                                                    />
+                                                    <Input id="imageUrl" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={formLoading || !!imageFile} className="text-xs h-8" />
+                                                    <Input id="imageFile" type="file" accept="image/*" onChange={handleFileChange} className="h-8 text-xs file:h-full file:text-[10px] file:px-2" ref={fileInputRef} disabled={formLoading} />
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                     <DialogFooter className="flex justify-between w-full border-t pt-4">
                                         {editingBook ? (
-                                            <Button type="button" variant="ghost" className="text-destructive font-bold h-10 px-4" onClick={handleDeleteBook} disabled={formLoading}>
-                                                <Trash2 className="mr-2 h-4 w-4" /> Delete Book
-                                            </Button>
+                                            <Button type="button" variant="ghost" className="text-destructive font-bold h-10 px-4" onClick={handleDeleteBook} disabled={formLoading}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
                                         ) : <div/> }
                                         <div className="flex gap-2">
                                             <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
-                                            <Button type="submit" disabled={formLoading} className="font-bold shadow-md">
-                                                {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingBook ? 'Save Changes' : 'Add to Catalog'}
-                                            </Button>
+                                            <Button type="submit" disabled={formLoading} className="font-bold shadow-md">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingBook ? 'Save Changes' : 'Add Book'}</Button>
                                         </div>
                                     </DialogFooter>
                                 </form>
@@ -443,12 +405,7 @@ export default function LibraryPage() {
                 <CardContent>
                     <div className="relative w-full max-w-xl">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Search by title, author, or genre..." 
-                            className="pl-8" 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                        <Input placeholder="Search catalog..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
                 </CardContent>
             </Card>
@@ -457,28 +414,23 @@ export default function LibraryPage() {
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}
                 </div>
-            ) : filteredBooks.length > 0 ? (
+            ) : (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {filteredBooks.map((book) => (
                         <Card key={book.id} className="flex flex-col overflow-hidden shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group">
                             <CardHeader className="p-0">
                                 <div className="relative h-56 w-full">
-                                    <Image src={book.image} alt={`Cover of ${book.title}`} fill className="object-cover" data-ai-hint={book.hint} />
+                                    <Image src={book.image} alt={`Cover of ${book.title}`} layout="fill" objectFit="cover" data-ai-hint={book.hint} />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <Button variant="secondary" size="sm" onClick={() => handleOpenDialog(book)} className="font-bold">
-                                            <Pencil className="mr-2 h-4 w-4"/>Edit Details
-                                        </Button>
+                                        <Button variant="secondary" size="sm" onClick={() => handleOpenDialog(book)} className="font-bold"><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
                                     </div>
                                 </div>
-                                <div className="p-4">
-                                    <CardTitle className="font-headline text-lg leading-tight line-clamp-1">{book.title}</CardTitle>
-                                    <CardDescription className="line-clamp-1">by {book.author}</CardDescription>
-                                </div>
+                                <div className="p-4"><CardTitle className="font-headline text-lg leading-tight line-clamp-1">{book.title}</CardTitle><CardDescription className="line-clamp-1">by {book.author}</CardDescription></div>
                             </CardHeader>
                             <CardContent className="flex flex-grow flex-col gap-2 p-4 pt-0">
                                 <div className="flex flex-wrap gap-1.5">
                                     {book.genre && <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-tighter truncate max-w-full">{book.genre.split(',')[0]}</Badge>}
-                                    {book.year && <Badge variant="secondary" className="text-[10px] h-5 bg-primary/5 text-primary border-primary/10">Year: {book.year}</Badge>}
+                                    {book.year && <Badge variant="secondary" className="text-[10px] h-5 bg-primary/5 text-primary">Year: {book.year}</Badge>}
                                 </div>
                                 <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 border-t pt-2">
                                     <div className="flex items-center gap-1.5 font-bold"><Library className="h-3 w-3"/> {book.count || 1} Copies</div>
@@ -486,25 +438,12 @@ export default function LibraryPage() {
                                 </div>
                             </CardContent>
                             <CardFooter className="flex justify-between items-center bg-muted/50 p-4 border-t">
-                                <Badge variant={statusConfig[book.status].variant} className="flex items-center h-6 text-[10px] font-black uppercase tracking-widest">
-                                    {statusConfig[book.status].icon}
-                                    {book.status}
-                                </Badge>
+                                <Badge variant={statusConfig[book.status].variant} className="flex items-center h-6 text-[10px] font-black uppercase tracking-widest">{statusConfig[book.status].icon}{book.status}</Badge>
                                 <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(book)} className="h-8">Details</Button>
                             </CardFooter>
                         </Card>
                     ))}
                 </div>
-            ) : (
-                <Card>
-                    <CardContent className="py-16 text-center text-muted-foreground">
-                        <Library className="mx-auto h-12 w-12 opacity-20" />
-                        <h3 className="mt-4 text-lg font-semibold">No Books Found</h3>
-                        <p className="mt-2 text-sm">
-                            The library catalog is empty or no books match your filters.
-                        </p>
-                    </CardContent>
-                </Card>
             )}
         </div>
     );
