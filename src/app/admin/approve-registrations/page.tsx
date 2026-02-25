@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -875,11 +876,11 @@ export default function ApproveRegistrationsPage() {
                                                 </div>
                                                 <div className="flex justify-end gap-2">
                                                     <Button variant="ghost" size="sm" className="text-destructive font-bold" onClick={() => handleClassRequestDecision(req, 'Declined')} disabled={!!actionLoading}>
-                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
+                                                        {actionLoading === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
                                                         Decline
                                                     </Button>
                                                     <Button size="sm" className="bg-primary font-bold shadow-md" onClick={() => handleClassRequestDecision(req, 'Approved')} disabled={!!actionLoading}>
-                                                        {actionLoading === req.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4 mr-1" />}
+                                                        {actionLoading === request.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4 mr-1" />}
                                                         Approve Enrollment
                                                     </Button>
                                                 </div>

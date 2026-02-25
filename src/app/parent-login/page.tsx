@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Smartphone } from "lucide-react";
+import { Loader2, ArrowLeft, Smartphone, MessageCircle } from "lucide-react";
 
 /**
  * Normalizes a phone number to a standard numeric format (e.g., 260977...)
@@ -84,14 +84,18 @@ export default function ParentLoginPage() {
           finalPhone = '+' + normalizePhone(finalPhone);
       }
 
+      // Attempt to send via WhatsApp channel
       const { error } = await supabase.auth.signInWithOtp({
         phone: finalPhone,
+        options: {
+            channel: 'whatsapp'
+        }
       });
 
       if (error) throw error;
 
       setStep('otp');
-      toast({ title: "OTP Sent", description: "Please check your phone for the verification code." });
+      toast({ title: "WhatsApp Sent", description: "Please check your WhatsApp messages for the verification code." });
     } catch (error: any) {
       console.error(error);
       toast({
@@ -118,7 +122,7 @@ export default function ParentLoginPage() {
       const { error } = await supabase.auth.verifyOtp({
         phone: finalPhone,
         token: otp,
-        type: 'sms',
+        type: 'sms', // Note: verifyOtp type is still 'sms' or 'phone_change' in current Supabase client even if sent via whatsapp channel
       });
 
       if (error) throw error;
@@ -145,11 +149,14 @@ export default function ParentLoginPage() {
         </div>
         <Card className="shadow-2xl border-primary/10">
           <CardHeader>
-            <CardTitle className="font-headline text-2xl">Parent Secure Login</CardTitle>
+            <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                <MessageCircle className="text-green-600" />
+                Parent Secure Login
+            </CardTitle>
             <CardDescription>
               {step === 'phone' 
-                ? "Enter your registered mobile number to receive a secure login code via Supabase SMS." 
-                : "Enter the 6-digit code sent to your phone."}
+                ? "Enter your mobile number to receive a secure login code via WhatsApp." 
+                : "Enter the 6-digit code sent to your WhatsApp."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -171,11 +178,11 @@ export default function ParentLoginPage() {
                     />
                   </div>
                   <p className="text-[10px] text-muted-foreground italic leading-tight">
-                    Note: Your number must match the guardian contact provided to the admissions office.
+                    Ensure your number is registered with WhatsApp. Standard message rates may apply.
                   </p>
                 </div>
-                <Button type="submit" className="w-full h-12 font-bold" disabled={loading}>
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Send Verification Code'}
+                <Button type="submit" className="w-full h-12 font-bold bg-green-600 hover:bg-green-700" disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Send WhatsApp Code'}
                 </Button>
               </form>
             ) : (
