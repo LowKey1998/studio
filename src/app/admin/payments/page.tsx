@@ -40,7 +40,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { format, parseISO, startOfDay, isAfter, addDays, isBefore, isWithinInterval, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -72,9 +72,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { Calendar } from '@/components/ui/calendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { parseIntakeDate, calculateAcademicState, calculateSemesterDateRange } from '@/lib/semester-utils';
+import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 const getOrdinalSuffix = (i: number) => {
@@ -543,6 +543,14 @@ export default function PaymentsManagementPage() {
                         updatedRow.academicStanding = latestSemester.name;
                         updatedRow.year = String(latestSemester.year);
                         updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
+                        
+                        // LOAD SUMMARY IMMEDIATELY
+                        const info = paymentInfos.find(p => p.userId === value && p.semesterId === latestSemester.id);
+                        if (info) {
+                            updatedRow.totalDue = info.totalDue;
+                            updatedRow.totalPaid = info.totalPaid;
+                            updatedRow.breakdown = info.breakdown;
+                        }
                     }
                 }
 
@@ -660,6 +668,10 @@ export default function PaymentsManagementPage() {
     }, [allStudents]);
 
     const handleRowPay = (info: StudentPaymentInfo) => {
+        const studentProfile = allUsers[info.userId];
+        const intakeId = studentProfile?.intakeId;
+        const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
+        
         setBulkPaymentRows([{ 
             key: Date.now(), 
             userId: info.userId, 
@@ -672,8 +684,8 @@ export default function PaymentsManagementPage() {
             totalPaid: info.totalPaid,
             breakdown: info.breakdown,
             academicStanding: info.semesterName,
-            availableYears: Array.from(new Set(semesters.filter(s => s.intakeId === info.intakeId).map(s => String(s.year)))),
-            availableSemesters: semesters.filter(s => s.intakeId === info.intakeId && String(s.year) === String(semesters.find(s => s.id === info.semesterId)?.year || '1'))
+            availableYears: Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort(),
+            availableSemesters: studentIntakeSemesters.filter(s => String(s.year) === String(semesters.find(s => s.id === info.semesterId)?.year || '1'))
         }]);
         setIsBulkRecordOpen(true);
     };
