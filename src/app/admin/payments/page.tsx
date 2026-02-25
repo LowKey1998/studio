@@ -323,8 +323,6 @@ export default function PaymentsManagementPage() {
         return () => off(offsetRef);
     }, []);
 
-    const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
-
     /**
      * Identifies which items are considered "paid" by a given total amount.
      * Follows priority: Mandatory -> Optional -> Tuition.
@@ -377,6 +375,8 @@ export default function PaymentsManagementPage() {
         const configsData = store.configs || {};
         const scholsData = store.scholarships || {};
 
+        const now = new Date(Date.now() + serverTimeOffset);
+
         const transactionsList: Transaction[] = [];
         for (const txId in txsData) {
             const tx = txsData[txId];
@@ -400,7 +400,6 @@ export default function PaymentsManagementPage() {
 
         const studentPaymentMap = new Map<string, StudentPaymentInfo>();
         const globalThreshold = finData.paymentThreshold || 75;
-        const now = getCurrentServerDate();
 
         for (const userId in regsData) {
             const profile = users[userId];
@@ -522,7 +521,7 @@ export default function PaymentsManagementPage() {
 
         setPaymentInfos(Array.from(studentPaymentMap.values()));
         setLoading(false);
-    }, [getCurrentServerDate, dataRefs]);
+    }, [serverTimeOffset]);
 
     React.useEffect(() => {
         if (!userData?.uid) return;
@@ -562,7 +561,7 @@ export default function PaymentsManagementPage() {
     }, [userData?.uid, dataRefs, computeDerived]);
 
     const filteredData = React.useMemo(() => {
-        const now = startOfDay(getCurrentServerDate());
+        const now = startOfDay(new Date(Date.now() + serverTimeOffset));
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                 p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
@@ -617,10 +616,10 @@ export default function PaymentsManagementPage() {
 
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && dateMatch && minMatch && maxMatch && equalMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset, semesters, getCurrentServerDate]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset, semesters]);
 
     const cashFlowStats = React.useMemo(() => {
-        const now = getCurrentServerDate();
+        const now = new Date(Date.now() + serverTimeOffset);
         const todayTotal = rawTransactions.filter(t => isToday(parseISO(t.paymentDate))).reduce((acc, t) => acc + t.amount, 0);
         const weekTotal = rawTransactions.filter(t => isThisWeek(parseISO(t.paymentDate), { weekStartsOn: 1 })).reduce((acc, t) => acc + t.amount, 0);
         const monthTotal = rawTransactions.filter(t => isThisMonth(parseISO(t.paymentDate))).reduce((acc, t) => acc + t.amount, 0);
@@ -682,7 +681,7 @@ export default function PaymentsManagementPage() {
                     if (intakeStartStr && calendarSettings) {
                         state = calculateAcademicState(
                             intakeStartStr,
-                            getCurrentServerDate(),
+                            new Date(Date.now() + serverTimeOffset),
                             calendarSettings.standardCycles,
                             Object.values(calendarSettings.anomalies || {})
                         );
