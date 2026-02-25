@@ -464,7 +464,7 @@ export default function LibraryPage() {
                         <Card key={book.id} className="flex flex-col overflow-hidden shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group">
                             <CardHeader className="p-0">
                                 <div className="relative h-56 w-full">
-                                    <Image src={book.image} alt={`Cover of ${book.title}`} layout="fill" objectFit="cover" data-ai-hint={book.hint} />
+                                    <Image src={book.image} alt={`Cover of ${book.title}`} fill className="object-cover" data-ai-hint={book.hint} />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <Button variant="secondary" size="sm" onClick={() => handleOpenDialog(book)} className="font-bold">
                                             <Pencil className="mr-2 h-4 w-4"/>Edit Details

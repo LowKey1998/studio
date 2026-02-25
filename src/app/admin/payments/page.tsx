@@ -38,7 +38,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
-import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
+import { ref, get, set, push, onValue, off, serverTimestamp, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -70,7 +70,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAuth } from '@/hooks/use-auth';
 import { Calendar } from '@/components/ui/calendar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -287,7 +286,7 @@ export default function PaymentsManagementPage() {
 
     const { toast } = useToast();
 
-    const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
+    const getCurrentServerDate = React.useCallback(() => new Date(Date.now() + serverTimeOffset), [serverTimeOffset]);
 
     const dataRefs = React.useMemo(() => ({
         users: ref(db, 'users'),
@@ -432,7 +431,7 @@ export default function PaymentsManagementPage() {
 
         setPaymentInfos(Array.from(studentPaymentMap.values()));
         setLoading(false);
-    }, [serverTimeOffset]);
+    }, [getCurrentServerDate]);
 
     React.useEffect(() => {
         if (!userData?.uid) return;
@@ -492,7 +491,7 @@ export default function PaymentsManagementPage() {
             
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && balanceMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, semesters]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, semesters, getCurrentServerDate]);
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -660,19 +659,6 @@ export default function PaymentsManagementPage() {
         }
     };
 
-    const handleSaveAdjustment = async () => {
-        if (!adjustmentTarget || !adjAmount || !adjReason.trim() || !user || !userData) return;
-        setFormLoading(true);
-        try {
-            const amountFloat = parseFloat(adjAmount);
-            const txRef = push(ref(db, 'transactions'));
-            await set(txRef, { transactionId: `${adjustmentTarget.type.toUpperCase()}-${Date.now()}`, userId: adjustmentTarget.userId, invoiceId: adjustmentTarget.invoiceId, amount: adjustmentTarget.type === 'credit' ? amountFloat : -amountFloat, status: 'successful', paymentDate: new Date().toISOString(), method: 'Adjustment', purpose: adjustmentTarget.type === 'credit' ? 'Credit Note' : 'Debit Note', comment: adjReason, recordedBy: userData.name });
-            toast({ title: 'Adjustment Recorded' });
-            setIsAdjustmentOpen(false); setAdjAmount(''); setAdjReason('');
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Action Failed' }); }
-        finally { setFormLoading(false); }
-    };
-
     const studentOptions: OptionGroup[] = React.useMemo(() => {
         const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
         return [{ groupName: 'Student Roster', items }];
@@ -712,7 +698,7 @@ export default function PaymentsManagementPage() {
             if (isThisMonth(d)) acc.monthTotal += t.amount;
             return acc;
         }, { todayTotal: 0, weekTotal: 0, monthTotal: 0 });
-    }, [rawTransactions, serverTimeOffset]);
+    }, [rawTransactions, getCurrentServerDate]);
 
     const calculatedStudentCount = React.useMemo(() => {
         return allStudents.filter(s => {
@@ -733,7 +719,7 @@ export default function PaymentsManagementPage() {
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Today's Collection</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Week</CardTitle><CalendarDays className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Month</CardTitle><Scale className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent>
                     </div>
                 </CardContent>
             </Card>
@@ -1002,12 +988,6 @@ export default function PaymentsManagementPage() {
                             </Label>
                             <div className="border rounded-xl overflow-hidden shadow-sm bg-card">
                                 <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="h-8 text-[10px]">Item Description</TableHead>
-                                            <TableHead className="h-8 text-[10px] text-right">Amount (ZMW)</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
                                     <TableBody>
                                         <TableRow>
                                             <TableCell className="text-xs font-medium">Base Tuition Fees</TableCell>
