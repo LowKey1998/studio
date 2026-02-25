@@ -37,7 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth, startOfDay } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -153,7 +153,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
@@ -199,7 +199,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                 <div className="p-2">
                     <input 
                         placeholder="Search roster..." 
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         value={search} 
                         onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
@@ -257,8 +257,6 @@ export default function PaymentsManagementPage() {
     const [semesterFilter, setSemesterFilter] = React.useState('current');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [planStatusFilter, setPlanStatusFilter] = React.useState('all');
-    const [dueFilter, setDueFilter] = React.useState('all');
-    const [dateRange, setDateRange] = React.useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
 
     // Audit State
     const [countIntakeId, setCountIntakeId] = React.useState('all');
@@ -299,34 +297,6 @@ export default function PaymentsManagementPage() {
         const offsetRef = ref(db, '.info/serverTimeOffset');
         onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
         return () => off(offsetRef);
-    }, []);
-
-    const calculatePaidItems = React.useCallback((totalPaid: number, breakdown: FeeBreakdown) => {
-        let remaining = totalPaid;
-        const paid: string[] = [];
-        
-        if (breakdown.mandatoryItems) {
-            for (const f of breakdown.mandatoryItems) {
-                if (remaining >= f.amount) {
-                    paid.push(f.name);
-                    remaining -= f.amount;
-                }
-            }
-        }
-        if (breakdown.optionalItems) {
-            for (const f of breakdown.optionalItems) {
-                if (remaining >= f.amount) {
-                    paid.push(f.name);
-                    remaining -= f.amount;
-                }
-            }
-        }
-        const netTuition = (breakdown.tuition || 0) - (breakdown.scholarship || 0);
-        if (remaining >= netTuition && netTuition > 0) {
-            paid.push('Tuition');
-        }
-        
-        return paid;
     }, []);
 
     const computeDerived = React.useCallback((store: any) => {
@@ -473,6 +443,7 @@ export default function PaymentsManagementPage() {
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { setFinancialSettings(snapshot.val()); store.financialSettings = snapshot.val(); computeDerived(store); }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.academicCalendar, (snapshot) => { setCalendarSettings(snapshot.val()); store.academicCalendar = snapshot.val(); computeDerived(store); }));
         unsubs.push(onValue(dataRefs.paymentPlans, (s) => { setAllPaymentPlans(Object.keys(s.val() || {}).map(id => ({id, ...s.val()[id]}))); store.paymentPlans = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.scholarships, (s) => { store.scholarships = s.val() || {}; computeDerived(store); }));
@@ -546,17 +517,17 @@ export default function PaymentsManagementPage() {
                     const intake = allIntakes.find(i => i.id === intakeId);
                     const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
                     
-                    let globalStanding = 'Year 1, Semester 1';
+                    let globalStandingLabel = 'Year 1 Semester 1';
                     if (intakeStartStr && calendarSettings) {
                         const state = calculateAcademicState(intakeStartStr, new Date(Date.now() + serverTimeOffset), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-                        globalStanding = `Year ${state.year}, Semester ${state.semester}`;
+                        globalStandingLabel = `Year ${state.year} Semester ${state.semester}`;
                     }
-                    updatedRow.globalStanding = globalStanding;
+                    updatedRow.globalStanding = globalStandingLabel;
                     
                     const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
                     updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
-                    const latestSemester = studentIntakeSemesters.find(s => s.name.includes(globalStanding));
+                    const latestSemester = studentIntakeSemesters.find(s => s.name.includes(globalStandingLabel));
                     if (latestSemester) {
                         updatedRow.semesterId = latestSemester.id;
                         updatedRow.academicStanding = latestSemester.name;
@@ -575,7 +546,6 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
-                // Strictly context-aware balance lookup
                 if (field === 'semesterId' || (field === 'year' && updatedRow.semesterId)) {
                     const semId = field === 'semesterId' ? value : updatedRow.semesterId;
                     const info = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === semId);
@@ -613,7 +583,7 @@ export default function PaymentsManagementPage() {
                                 if (rem >= f.amount) { autoAllocations.push(f.name); rem -= f.amount; }
                             }
                         }
-                        const netTuition = updatedRow.breakdown.tuition - updatedRow.breakdown.scholarship;
+                        const netTuition = (updatedRow.breakdown.tuition || 0) - (updatedRow.breakdown.scholarship || 0);
                         if (rem >= netTuition && netTuition > 0) autoAllocations.push('Tuition');
                         updatedRow.allocations = autoAllocations;
                     }
