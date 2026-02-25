@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -79,6 +78,12 @@ const getOrdinalSuffix = (i: number) => {
     if (i === 2) return '2nd';
     if (i === 3) return '3rd';
     return `${i}th`;
+};
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
 };
 
 type FeeBreakdown = {
@@ -624,7 +629,7 @@ export default function PaymentsManagementPage() {
                             String(s.year) === value && s.status === 'Open'
                         );
                     } else {
-                        const studentProfile = allStudents.find(s => s.uid === updatedRow.userId);
+                        const studentProfile = allUsers[updatedRow.userId || ''];
                         updatedRow.availableSemesters = semesters.filter(s => 
                             s.intakeId === studentProfile?.intakeId && String(s.year) === value
                         );
@@ -632,7 +637,7 @@ export default function PaymentsManagementPage() {
                 }
 
                 if (field === 'userId' && !updatedRow.isNewStudent) {
-                    const studentProfile = allStudents.find(s => s.uid === value);
+                    const studentProfile = allUsers[value];
                     const intakeId = studentProfile?.intakeId;
                     const intake = allIntakes.find(i => i.id === intakeId);
                     const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
@@ -743,6 +748,7 @@ export default function PaymentsManagementPage() {
         try {
             const updates: Record<string, any> = {};
             const now = new Date().toISOString();
+            const studentMessages: { uid: string, message: string }[] = [];
 
             for (const row of bulkPaymentRows) {
                 const amount = parseFloat(row.amount);
@@ -754,11 +760,11 @@ export default function PaymentsManagementPage() {
                     const requestId = reqRef.key!;
                     
                     updates[`studentCreationRequests/${requestId}`] = {
-                        tempId: row.tempStudentId,
-                        tempName: row.tempStudentName,
-                        targetSemesterId: row.semesterId,
+                        tempId: row.tempStudentId || null,
+                        tempName: row.tempStudentName || null,
+                        targetSemesterId: row.semesterId || null,
                         amountPaid: amount,
-                        comment: row.comment,
+                        comment: row.comment || null,
                         status: 'pending',
                         timestamp: Date.now()
                     };
@@ -771,12 +777,12 @@ export default function PaymentsManagementPage() {
                         status: 'successful',
                         method: 'Cash/Direct',
                         purpose: row.allocations.join(', ') || 'Initial Deposit',
-                        comment: row.comment,
+                        comment: row.comment || null,
                         recordedBy: userData.name,
                         isUnlinked: true,
                         requestId,
-                        senderName: row.tempStudentName,
-                        tempId: row.tempStudentId
+                        senderName: row.tempStudentName || null,
+                        tempId: row.tempStudentId || null
                     };
                 } else if (row.userId) {
                     const student = paymentInfos.find(p => p.userId === row.userId && p.semesterId === row.semesterId);
@@ -786,30 +792,36 @@ export default function PaymentsManagementPage() {
                     updates[`transactions/${txRef.key}`] = {
                         transactionId: `CASH-${Date.now()}`,
                         userId: row.userId,
-                        invoiceId: student.invoiceId,
+                        invoiceId: student.invoiceId || null,
                         amount,
                         paymentDate: now,
                         status: 'successful',
                         method: 'Cash/Direct',
                         purpose: row.allocations.join(', ') || 'Fees Payment',
-                        comment: row.comment,
+                        comment: row.comment || null,
                         recordedBy: userData.name
                     };
 
-                    await createNotification(
-                        row.userId,
-                        `A payment of ZMW ${amount.toFixed(2)} was recorded for your ${student.semesterName} invoice.`,
-                        '/student/payments'
-                    );
+                    studentMessages.push({
+                        uid: row.userId,
+                        message: `A payment of ZMW ${amount.toFixed(2)} was recorded for your ${student.semesterName} invoice.`
+                    });
                 }
             }
 
             await update(ref(db), updates);
+            
+            if (studentMessages.length > 0) {
+                Promise.allSettled(studentMessages.map(item => 
+                    createNotification(item.uid, item.message, '/student/payments')
+                )).catch(err => console.warn("Background batch notifications partially failed:", err));
+            }
+
             toast({ variant: 'success', title: 'Transactions Recorded' });
             setIsBulkRecordOpen(false);
             setBulkPaymentRows([]);
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
+            toast({ variant: 'destructive', title: 'Save Failed', description: e.message || "An unexpected error occurred during processing." });
         } finally {
             setFormLoading(false);
         }
@@ -888,184 +900,210 @@ export default function PaymentsManagementPage() {
             <Card className="shadow-lg border-0 bg-primary/5">
                  <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                      <div>
-                        <CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle>
-                        <CardDescription>Consolidated institutional revenue and standing audit.</CardDescription>
+                        <CardTitle className="font-headline text-2xl text-primary">Financial Audit Hub</CardTitle>
+                        <CardDescription>Consolidated institutional revenue and compliance audit.</CardDescription>
                     </div>
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collection</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Week</CardTitle><CalendarDays className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle><Scale className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collection</CardTitle>
+                                <TrendingUp className="h-4 w-4 text-green-600"/>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Week</CardTitle>
+                                <CalendarDays className="h-4 w-4 text-primary"/>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
+                                <Scale className="h-4 w-4 text-primary"/>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle>
+                                <Users className="h-4 w-4 text-muted-foreground"/>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent>
+                        </Card>
                     </div>
                 </CardContent>
             </Card>
 
             <div className="grid gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-2 shadow-md">
-                    <CardHeader className="border-b">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div><CardTitle>Receivables & Audit</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
-                            <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={handleSaveFiltersAsDefault}><Save className="mr-2 h-4 w-4"/> Save View as Default</Button>
-                                <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                <div className="lg:col-span-2 space-y-6">
+                    <Card className="shadow-md">
+                        <CardHeader className="border-b">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div><CardTitle>Receivables Ledger</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
+                                <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={handleSaveFiltersAsDefault}><Save className="mr-2 h-4 w-4"/> Save View as Default</Button>
+                                    <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                                </div>
                             </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="pt-6 space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
-                                <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-                                    <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Semesters</SelectItem>
-                                        <SelectItem value="current" className="font-bold text-primary">Current Academic Phase</SelectItem>
-                                        <Separator className="my-1"/>
-                                        {filteredSemestersForSelect.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
+                                    <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+                                        <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Semesters</SelectItem>
+                                            <SelectItem value="current" className="font-bold text-primary">Current Academic Phase</SelectItem>
+                                            <Separator className="my-1"/>
+                                            {filteredSemestersForSelect.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
+                                    <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Statuses</SelectItem>
+                                            <SelectItem value="none">Plan Not Set (Urgent)</SelectItem>
+                                            <Separator className="my-1"/>
+                                            {allPaymentPlans.filter(p => !p.archived).map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
-                                <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Statuses</SelectItem>
-                                        <SelectItem value="none">Plan Not Set (Urgent)</SelectItem>
-                                        <Separator className="my-1"/>
-                                        {allPaymentPlans.filter(p => !p.archived).map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pb-4 border-b border-dashed items-end">
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Date Period (Payments)</Label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs", !dateRange.from && "text-muted-foreground border-dashed")}>
-                                            <CalendarIcon className="mr-2 h-3 w-3" />
-                                            {dateRange.from ? (dateRange.to ? `${format(dateRange.from, "PP")} - ${format(dateRange.to, "PP")}` : format(dateRange.from, "PP")) : <span>Pick a range</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar mode="range" selected={dateRange as any} onSelect={(range: any) => setDateRange(range || { from: undefined, to: undefined })} numberOfMonths={2} />
-                                    </PopoverContent>
-                                </Popover>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pb-4 border-b border-dashed items-end">
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Date Period (Payments)</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs", !dateRange.from && "text-muted-foreground border-dashed")}>
+                                                <CalendarIcon className="mr-2 h-3 w-3" />
+                                                {dateRange.from ? (dateRange.to ? `${format(dateRange.from, "PP")} - ${format(dateRange.to, "PP")}` : format(dateRange.from, "PP")) : <span>Pick a range</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar mode="range" selected={dateRange as any} onSelect={(range: any) => setDateRange(range || { from: undefined, to: undefined })} numberOfMonths={2} />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-8 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Min Paid</Label><Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Max Paid</Label><Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
                             </div>
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-8 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Min Paid</Label><Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
-                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Max Paid</Label><Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
-                        </div>
 
-                        <div className="rounded-md border shadow-sm overflow-hidden">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/50">
-                                        <TableHead>System ID</TableHead>
-                                        <TableHead className="min-w-[200px]">User & Plan</TableHead>
-                                        <TableHead className="text-right">Balance</TableHead>
-                                        <TableHead className="text-right">Paid</TableHead>
-                                        <TableHead className="text-center min-w-[140px]">Standing</TableHead>
-                                        <TableHead className="w-[80px]"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredData.map((info) => (
-                                        <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30 transition-colors">
-                                            <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col gap-1 py-1">
-                                                    <span className="font-bold text-sm leading-tight">{info.studentName}</span>
-                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                        {info.paymentPlanName ? (
-                                                            <Badge variant="outline" className="h-4 text-[8px] uppercase border-primary/20 bg-primary/5 whitespace-nowrap">
-                                                                {info.paymentPlanName}
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse">
-                                                                Plan Not Set
-                                                            </Badge>
-                                                        )}
-                                                        <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate">
-                                                            {info.semesterName}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Popover>
-                                                    <PopoverTrigger asChild><Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end"><div className="flex items-center gap-1.5"><span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>{info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}</div><span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span></Button></PopoverTrigger>
-                                                    <PopoverContent className="w-80 p-4 shadow-2xl">
-                                                        <div className="space-y-3">
-                                                            <h4 className="text-[10px] font-black uppercase text-primary tracking-widest">Balance Breakdown</h4>
-                                                            <Separator />
-                                                            <div className="space-y-1.5 text-xs">
-                                                                <div className="flex justify-between"><span>Tuition:</span> <span className="font-bold">ZMW {info.breakdown.tuition.toFixed(2)}</span></div>
-                                                                {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
-                                                                {info.breakdown.mandatoryItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
-                                                                <Separator className="my-2" />
-                                                                <div className="flex justify-between font-black text-destructive"><span>Net Still Due:</span> <span>ZMW {info.balance.toFixed(2)}</span></div>
-                                                            </div>
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
-                                            </TableCell>
-                                            <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
-                                            <TableCell className="text-center">
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <div className="flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
-                                                            {info.balance <= 0.01 ? (
-                                                                <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black whitespace-nowrap">Cleared</Badge>
-                                                            ) : info.thresholdMet ? (
-                                                                <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black whitespace-nowrap">Good Standing</Badge>
-                                                            ) : (
-                                                                <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse whitespace-nowrap">Below Threshold</Badge>
-                                                            )}
-                                                            {info.nextInstallmentDue && (
-                                                                <span className="text-[8px] font-bold opacity-60 mt-1 uppercase whitespace-nowrap">
-                                                                    Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-64 p-4 shadow-2xl" align="center">
-                                                        <div className="space-y-3 text-[10px] font-bold uppercase">
-                                                            <h4 className="font-black text-primary border-b pb-2 tracking-widest">Standing Details</h4>
-                                                            <div className="flex justify-between"><span>Required Threshold:</span><span>{info.targetThreshold}%</span></div>
-                                                            <div className="flex justify-between"><span>Actual Paid:</span><span className={cn(info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span></div>
-                                                            <Separator className="my-2" />
-                                                            <div className="space-y-1.5"><span className="text-[9px] font-black opacity-40">Active Blocks:</span>
-                                                                <div className="flex justify-between"><span>Registration</span> {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
-                                                                <div className="flex justify-between"><span>Exam Results</span> {restrictions.results && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
-                                                            </div>
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center justify-end gap-1">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleQuickPay(info)}><Banknote className="h-4 w-4"/></Button>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end" className="w-48">
-                                                            <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement</DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4"/>Issue Debit</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-                                            </TableCell>
+                            <div className="rounded-md border shadow-sm overflow-hidden">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/50">
+                                            <TableHead>System ID</TableHead>
+                                            <TableHead className="min-w-[220px]">User & Plan</TableHead>
+                                            <TableHead className="text-right">Balance</TableHead>
+                                            <TableHead className="text-right">Paid</TableHead>
+                                            <TableHead className="text-center min-w-[160px]">Standing</TableHead>
+                                            <TableHead className="w-[80px]"></TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    </CardContent>
-                </Card>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredData.map((info) => (
+                                            <TableRow key={`${info.userId}-${info.semesterId}`} className={cn("group hover:bg-muted/30 transition-colors", info.isProvisional && "bg-orange-50/20")}>
+                                                <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col gap-1 py-1">
+                                                        <span className="font-bold text-sm leading-tight">{info.studentName}</span>
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            {info.paymentPlanName ? (
+                                                                <Badge variant="outline" className="h-4 text-[8px] uppercase border-primary/20 bg-primary/5 whitespace-nowrap">
+                                                                    {info.paymentPlanName}
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse">
+                                                                    Plan Not Set
+                                                                </Badge>
+                                                            )}
+                                                            <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate">
+                                                                {info.semesterName}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Popover>
+                                                        <PopoverTrigger asChild><Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end"><div className="flex items-center gap-1.5"><span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>{info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}</div><span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span></Button></PopoverTrigger>
+                                                        <PopoverContent className="w-80 p-4 shadow-2xl">
+                                                            <div className="space-y-3">
+                                                                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest">Balance Breakdown</h4>
+                                                                <Separator />
+                                                                <div className="space-y-1.5 text-xs">
+                                                                    <div className="flex justify-between"><span>Tuition:</span> <span className="font-bold">ZMW {info.breakdown.tuition.toFixed(2)}</span></div>
+                                                                    {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
+                                                                    {info.breakdown.mandatoryItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
+                                                                    <Separator className="my-2" />
+                                                                    <div className="flex justify-between font-black text-destructive"><span>Net Still Due:</span> <span>ZMW {info.balance.toFixed(2)}</span></div>
+                                                                </div>
+                                                            </div>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                </TableCell>
+                                                <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
+                                                <TableCell className="text-center">
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <div className="flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
+                                                                {info.balance <= 0.01 ? (
+                                                                    <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black whitespace-nowrap">Cleared</Badge>
+                                                                ) : info.thresholdMet ? (
+                                                                    <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black whitespace-nowrap">Good Standing</Badge>
+                                                                ) : (
+                                                                    <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse whitespace-nowrap">Below Threshold</Badge>
+                                                                )}
+                                                                {info.nextInstallmentDue && (
+                                                                    <span className="text-[8px] font-bold opacity-60 mt-1 uppercase whitespace-nowrap">
+                                                                        Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-64 p-4 shadow-2xl" align="center">
+                                                            <div className="space-y-3 text-[10px] font-bold uppercase">
+                                                                <h4 className="font-black text-primary border-b pb-2 tracking-widest">Standing Details</h4>
+                                                                <div className="flex justify-between"><span>Required Threshold:</span><span>{info.targetThreshold}%</span></div>
+                                                                <div className="flex justify-between"><span>Actual Paid:</span><span className={cn(info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span></div>
+                                                                <Separator className="my-2" />
+                                                                <div className="space-y-1.5"><span className="text-[9px] font-black opacity-40">Active Blocks:</span>
+                                                                    <div className="flex justify-between"><span>Registration</span> {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                                    <div className="flex justify-between"><span>Exam Results</span> {restrictions.results && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                                </div>
+                                                            </div>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleQuickPay(info)} title="Quick Payment"><Banknote className="h-4 w-4"/></Button>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-48">
+                                                                <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement</DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit</DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4"/>Issue Debit</DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
                 <div className="space-y-6">
                     <Card className="shadow-md border-primary/10">
@@ -1106,8 +1144,11 @@ export default function PaymentsManagementPage() {
 
                     <Card className="border-2 border-primary/10 shadow-md">
                         <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-lg">Audit Notice</CardTitle></CardHeader>
-                        <CardContent className="pt-6 space-y-4">
-                            <p className="text-xs text-muted-foreground leading-relaxed">Ensure all manual receipts are reconciled weekly. Discrepancies in student standing must be reported to the Registrar immediately.</p>
+                        <CardContent className="pt-6 space-y-4 text-xs text-muted-foreground leading-relaxed">
+                            <div className="flex gap-2 items-start">
+                                <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                                <p>Ensure all manual receipts are reconciled weekly. Discrepancies in student standing must be reported to the Registrar immediately.</p>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -1188,7 +1229,7 @@ export default function PaymentsManagementPage() {
                                 </CardContent>
                             </Card>
                         )})}
-                        <Button variant="outline" className="w-full border-dashed border-2 py-8 rounded-xl" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><Plus className="mr-2 h-5 w-5"/>Add Row</Button>
+                        <Button variant="outline" className="w-full border-dashed border-2 py-8 rounded-xl" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><PlusCircle className="mr-2 h-5 w-5"/>Add Row</Button>
                     </div>
                     <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg"><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 font-black uppercase text-xs">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}Process Batch</Button></DialogFooter>
                 </DialogContent>
@@ -1206,7 +1247,7 @@ export default function PaymentsManagementPage() {
                                 {paymentInfos.filter(p => p.userId === historyStudent.userId).map(p => (
                                     <TabsContent key={p.semesterId} value={p.semesterId!} className="flex-1 flex flex-col mt-4 overflow-hidden border rounded-xl bg-background shadow-inner">
                                         <div className="p-4 bg-muted/30 border-b flex justify-between items-center"><div><p className="text-sm font-bold">{p.semesterName}</p></div><div className="flex gap-6 text-[10px] font-black uppercase"><span>Due: K{p.totalDue.toFixed(2)}</span><span className="text-green-600">Paid: K{p.totalPaid.toFixed(2)}</span><span className="text-destructive">Bal: K{p.balance.toFixed(2)}</span></div></div>
-                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead>                                    <TableHead>Ref / Purpose</TableHead><TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
+                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead><TableHead>Ref / Purpose</TableHead><TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
                                         {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (<TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions recorded for this semester.</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
                                     </TabsContent>
                                 ))}
@@ -1218,7 +1259,7 @@ export default function PaymentsManagementPage() {
 
             <Dialog open={isAdjustmentOpen} onOpenChange={setIsAdjustmentOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle className="text-xl font-headline uppercase">Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle><DialogDescription>Applying adjustment to <span className="font-black text-foreground">{adjustmentTarget?.studentName}'s</span> ledger.</DialogDescription></DialogHeader>
+                    <DialogHeader><div className="flex items-center gap-2 text-primary mb-2"><PlusCircle className="h-5 w-5"/><DialogTitle className="text-xl font-headline uppercase">Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle></div><DialogDescription>Applying adjustment to <span className="font-black text-foreground">{adjustmentTarget?.studentName}'s</span> ledger.</DialogDescription></DialogHeader>
                     <div className="space-y-6 py-6 border-y border-dashed my-4"><div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary">Adjustment Amount (ZMW)</Label><div className="relative"><Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} className="h-14 text-2xl font-black bg-muted/20 border-primary/20 pl-10" /><span className="absolute left-4 top-1/2 -translate-y-1/2 font-black opacity-30 text-xl">K</span></div></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground">Audit Reason</Label><Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Required context..." rows={4} /></div></div>
                     <DialogFooter><DialogClose asChild><Button variant="ghost">Discard</Button></DialogClose><Button onClick={handleSaveAdjustment} disabled={formLoading || !adjAmount || !adjReason.trim()}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}Post Adjustment</Button></DialogFooter>
                 </DialogContent>
