@@ -32,7 +32,8 @@ import {
     ArrowRight,
     HandCoins,
     UserCheck,
-    History
+    History,
+    ReceiptText
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -710,9 +711,9 @@ export default function PaymentsManagementPage() {
                         </CardHeader>
                         <CardContent className="pt-6 space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
-                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={intakeFilter => setIntakeFilter(intakeFilter)}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                 <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
-                                    <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+                                    <Select value={semesterFilter} onValueChange={semesterFilter => setSemesterFilter(semesterFilter)}>
                                         <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All Semesters</SelectItem>
@@ -723,7 +724,7 @@ export default function PaymentsManagementPage() {
                                     </Select>
                                 </div>
                                 <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Payment Status</Label>
-                                    <Select value={balanceStatusFilter} onValueChange={setBalanceStatusFilter}>
+                                    <Select value={balanceStatusFilter} onValueChange={balanceStatusFilter => setBalanceStatusFilter(balanceStatusFilter)}>
                                         <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All Balances</SelectItem>
@@ -805,8 +806,8 @@ export default function PaymentsManagementPage() {
                     <Card className="shadow-md border-primary/10">
                         <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
                         <CardContent className="pt-6 space-y-4">
-                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={setCountIntakeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={setCountProgrammeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={countIntakeId => setCountIntakeId(countIntakeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={countProgrammeId => setCountProgrammeId(countProgrammeId)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                             <Separator /><div className="text-center p-4 bg-muted/20 rounded-xl border border-dashed"><span className="block text-4xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
                         </CardContent>
                     </Card>
