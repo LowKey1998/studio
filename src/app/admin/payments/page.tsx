@@ -395,7 +395,6 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // STRICT ATTRIBUTION BY INVOICE ID
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -544,7 +543,6 @@ export default function PaymentsManagementPage() {
                         updatedRow.year = String(latestSemester.year);
                         updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
                         
-                        // LOAD SUMMARY IMMEDIATELY
                         const info = paymentInfos.find(p => p.userId === value && p.semesterId === latestSemester.id);
                         if (info) {
                             updatedRow.totalDue = info.totalDue;
@@ -585,9 +583,9 @@ export default function PaymentsManagementPage() {
                     }
                 }
 
-                if (field === 'amount' || field === 'userId' || field === 'semesterId') {
-                    const amountVal = parseFloat(field === 'amount' ? value : updatedRow.amount) || 0;
-                    if (updatedRow.breakdown) {
+                if (field === 'amount' || field === 'userId' || field === 'semesterId' || field === 'allocations') {
+                    if (updatedRow.breakdown && field !== 'allocations') {
+                        const amountVal = parseFloat(field === 'amount' ? value : updatedRow.amount) || 0;
                         const cumulativePaid = (updatedRow.totalPaid || 0) + amountVal;
                         let rem = cumulativePaid;
                         const autoAllocations: string[] = [];
@@ -701,7 +699,7 @@ export default function PaymentsManagementPage() {
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Today's Collection</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Week</CardTitle><CalendarDays className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Month</CardTitle><Scale className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
                     </div>
                 </CardContent>
             </Card>
@@ -860,12 +858,54 @@ export default function PaymentsManagementPage() {
                                             <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-red-600 uppercase">New Bal</span><span className="text-xl font-black text-red-600">K{afterPay.toLocaleString()}</span></div>
                                         </div>
                                         <Separator />
-                                        <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Automatic Item Coverage</Label>
+                                        <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Itemized Item Coverage</Label>
                                         <ScrollArea className="h-32 border rounded-xl p-3 bg-muted/5 shadow-inner">
                                             <div className="space-y-2">
-                                                <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><Checkbox id={`t-${row.key}`} checked={row.allocations.includes('Tuition')} disabled/><Label className="text-xs font-medium opacity-70">Tuition Fees</Label></div><span className="text-[10px] font-mono opacity-60">ZMW {(row.breakdown?.tuition || 0).toFixed(2)}</span></div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Checkbox 
+                                                            id={`t-${row.key}`} 
+                                                            checked={row.allocations.includes('Tuition')} 
+                                                            onCheckedChange={(checked) => {
+                                                                const next = checked ? [...row.allocations, 'Tuition'] : row.allocations.filter(a => a !== 'Tuition');
+                                                                handleBulkPaymentRowChange(row.key, 'allocations', next);
+                                                            }}
+                                                        />
+                                                        <Label htmlFor={`t-${row.key}`} className="text-xs font-medium opacity-70">Tuition Fees</Label>
+                                                    </div>
+                                                    <span className="text-[10px] font-mono opacity-60">ZMW {(row.breakdown?.tuition || 0).toFixed(2)}</span>
+                                                </div>
                                                 {row.breakdown?.mandatoryItems?.map((f, i) => (
-                                                    <div key={i} className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><Checkbox id={`m-${row.key}-${i}`} checked={row.allocations.includes(f.name)} disabled/><Label className="text-xs opacity-70">{f.name}</Label></div><span className="text-[10px] font-mono opacity-60">ZMW {(f.amount || 0).toFixed(2)}</span></div>
+                                                    <div key={i} className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Checkbox 
+                                                                id={`m-${row.key}-${i}`} 
+                                                                checked={row.allocations.includes(f.name)} 
+                                                                onCheckedChange={(checked) => {
+                                                                    const next = checked ? [...row.allocations, f.name] : row.allocations.filter(a => a !== f.name);
+                                                                    handleBulkPaymentRowChange(row.key, 'allocations', next);
+                                                                }}
+                                                            />
+                                                            <Label htmlFor={`m-${row.key}-${i}`} className="text-xs opacity-70">{f.name}</Label>
+                                                        </div>
+                                                        <span className="text-[10px] font-mono opacity-60">ZMW {(f.amount || 0).toFixed(2)}</span>
+                                                    </div>
+                                                ))}
+                                                {row.breakdown?.optionalItems?.map((f, i) => (
+                                                    <div key={i} className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Checkbox 
+                                                                id={`o-${row.key}-${i}`} 
+                                                                checked={row.allocations.includes(f.name)} 
+                                                                onCheckedChange={(checked) => {
+                                                                    const next = checked ? [...row.allocations, f.name] : row.allocations.filter(a => a !== f.name);
+                                                                    handleBulkPaymentRowChange(row.key, 'allocations', next);
+                                                                }}
+                                                            />
+                                                            <Label htmlFor={`o-${row.key}-${i}`} className="text-xs opacity-70 italic text-muted-foreground">{f.name}</Label>
+                                                        </div>
+                                                        <span className="text-[10px] font-mono opacity-60">ZMW {(f.amount || 0).toFixed(2)}</span>
+                                                    </div>
                                                 ))}
                                             </div>
                                         </ScrollArea>

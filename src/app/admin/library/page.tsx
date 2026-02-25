@@ -219,8 +219,8 @@ export default function LibraryPage() {
             setIsScannerActive(false);
             toast({ 
                 variant: 'destructive', 
-                title: "Camera Error", 
-                description: "Ensure permissions are granted in your browser settings." 
+                title: "Camera Access Denied", 
+                description: "Please enable camera permissions in your browser settings to use the ISBN scanner." 
             });
         }
     };
