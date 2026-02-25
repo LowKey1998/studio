@@ -257,26 +257,21 @@ export default function PaymentsManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
-    // Filters
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('current');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [balanceStatusFilter, setBalanceStatusFilter] = React.useState('all');
 
-    // Audit State
     const [countIntakeId, setCountIntakeId] = React.useState('all');
     const [countProgrammeId, setCountProgrammeId] = React.useState('all');
 
-    // Detailed Audit State (Popup)
     const [isDetailOpen, setIsDetailOpen] = React.useState(false);
     const [selectedDetail, setSelectedDetail] = React.useState<StudentPaymentInfo | null>(null);
 
-    // Bulk Recording State
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
     
-    // Adjustment State
     const [isAdjustmentOpen, setIsAdjustmentOpen] = React.useState(false);
     const [adjustmentTarget, setAdjustmentTarget] = React.useState<{ type: 'debit' | 'credit', id: string, userId: string, studentName: string, studentId: string, invoiceId: string } | null>(null);
     const [adjAmount, setAdjAmount] = React.useState('');
@@ -286,7 +281,9 @@ export default function PaymentsManagementPage() {
 
     const { toast } = useToast();
 
-    const getCurrentServerDate = React.useCallback(() => new Date(Date.now() + serverTimeOffset), [serverTimeOffset]);
+    const getCurrentServerDate = React.useCallback(() => {
+        return new Date(Date.now() + serverTimeOffset);
+    }, [serverTimeOffset]);
 
     const dataRefs = React.useMemo(() => ({
         users: ref(db, 'users'),
@@ -719,7 +716,7 @@ export default function PaymentsManagementPage() {
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Today's Collection</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Week</CardTitle><CalendarDays className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Month</CardTitle><Scale className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
                     </div>
                 </CardContent>
             </Card>

@@ -100,7 +100,7 @@ export default function LibraryPage() {
                 scanner.stop().catch(console.error);
             }
         };
-    }, [scanner]);
+    }, []);
 
     // Handle scanner initialization after DOM update
     React.useEffect(() => {
@@ -110,7 +110,6 @@ export default function LibraryPage() {
             const start = async () => {
                 const element = document.getElementById(SCANNER_ID);
                 if (!element) {
-                    console.warn("Scanner element not ready, retrying...");
                     return;
                 }
 
@@ -131,7 +130,7 @@ export default function LibraryPage() {
                     setIsScannerActive(false);
                 }
             };
-            const timer = setTimeout(start, 250);
+            const timer = setTimeout(start, 300);
             return () => {
                 clearTimeout(timer);
                 if (qrScanner) {
