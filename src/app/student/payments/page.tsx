@@ -189,7 +189,7 @@ export default function StudentPaymentsPage() {
             const summaries: PaymentSummary[] = Object.entries(regsData)
                 .map(([semId, reg]: [string, any]) => {
                     const semesterInfo = semestersData[semId];
-                    if (!semesterInfo || semesterInfo.status === 'Archived') return null;
+                    if (!semesterInfo || semesterInfo.status === 'Archived' || semesterInfo.intakeId !== userProfile.intakeId) return null;
 
                     const invoice = invoicesData[reg.invoiceId];
                     let billingResults;

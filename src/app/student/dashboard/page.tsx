@@ -426,7 +426,7 @@ export default function StudentDashboardPage() {
                     <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-primary/5">{userProfile?.programmeName || 'Academic Portal'}</Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">Intake: {intakeName}</Badge>
-                        {academicStanding && <Badge variant="secondary" className="gap-1.5 font-bold"><CalendarDays className="h-3 w-3" />{academicStanding}</Badge>}
+                        {academicStanding && <Badge variant="secondary" className="gap-1.5 font-bold"><CalendarDays className="h-4 w-4" />{academicStanding}</Badge>}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">

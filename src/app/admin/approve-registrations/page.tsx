@@ -22,7 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, remove, set, serverTimestamp, push } from 'firebase/database';
-import { format, parseISO, isAfter, addDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { 
     AlertDialog, 
     AlertDialogAction, 
