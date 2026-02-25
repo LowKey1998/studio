@@ -406,8 +406,6 @@ export default function PaymentsManagementPage() {
                         };
                     } else {
                         isProvisional = true;
-                        
-                        // Handle Scholarship Fallback: If not explicitly set in reg, check student profile
                         const scholarshipId = reg.scholarshipId || profile.scholarshipId;
                         const hasScholarship = !!reg.applyScholarship || !!profile.scholarshipId;
                         const percentage = reg.scholarshipPercentage || (profile.scholarshipId ? (scholsData[profile.scholarshipId]?.percentage || 0) : 0);
@@ -966,11 +964,11 @@ export default function PaymentsManagementPage() {
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
                                         <TableHead>System ID</TableHead>
-                                        <TableHead>User & Plan</TableHead>
+                                        <TableHead className="min-w-[200px]">User & Plan</TableHead>
                                         <TableHead className="text-right">Balance</TableHead>
                                         <TableHead className="text-right">Paid</TableHead>
-                                        <TableHead className="text-center">Standing</TableHead>
-                                        <TableHead className="w-[100px]"></TableHead>
+                                        <TableHead className="text-center min-w-[140px]">Standing</TableHead>
+                                        <TableHead className="w-[80px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -978,11 +976,21 @@ export default function PaymentsManagementPage() {
                                         <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30 transition-colors">
                                             <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
                                             <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-sm">{info.studentName}</span>
-                                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                                        {info.paymentPlanName ? <Badge variant="outline" className="w-fit h-4 text-[8px] uppercase border-primary/20">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="w-fit h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
-                                                        <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate max-w-[120px]">{info.semesterName}</span>
+                                                <div className="flex flex-col gap-1 py-1">
+                                                    <span className="font-bold text-sm leading-tight">{info.studentName}</span>
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        {info.paymentPlanName ? (
+                                                            <Badge variant="outline" className="h-4 text-[8px] uppercase border-primary/20 bg-primary/5 whitespace-nowrap">
+                                                                {info.paymentPlanName}
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse">
+                                                                Plan Not Set
+                                                            </Badge>
+                                                        )}
+                                                        <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate">
+                                                            {info.semesterName}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -1009,8 +1017,18 @@ export default function PaymentsManagementPage() {
                                                 <Popover>
                                                     <PopoverTrigger asChild>
                                                         <div className="flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
-                                                            {info.balance <= 0.01 ? <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black">Cleared</Badge> : info.thresholdMet ? <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black">Good Standing</Badge> : <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse">Below Threshold</Badge>}
-                                                            {info.nextInstallmentDue && <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>}
+                                                            {info.balance <= 0.01 ? (
+                                                                <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black whitespace-nowrap">Cleared</Badge>
+                                                            ) : info.thresholdMet ? (
+                                                                <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black whitespace-nowrap">Good Standing</Badge>
+                                                            ) : (
+                                                                <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse whitespace-nowrap">Below Threshold</Badge>
+                                                            )}
+                                                            {info.nextInstallmentDue && (
+                                                                <span className="text-[8px] font-bold opacity-60 mt-1 uppercase whitespace-nowrap">
+                                                                    Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-64 p-4 shadow-2xl" align="center">
