@@ -267,7 +267,7 @@ export default function StudentPaymentsPage() {
                         totalPaid,
                         balance,
                         status: (billingResults.totalDue > 0 && balance <= 0.01) ? 'Paid' : 'Pending',
-                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()),
+                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.date).getTime()),
                         threshold,
                         paidPercentage,
                         thresholdMet,

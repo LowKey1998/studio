@@ -34,7 +34,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -1061,7 +1061,7 @@ export default function PaymentsManagementPage() {
                                     <TableHeader>
                                         <TableRow className="bg-muted/50">
                                             <TableHead>System ID</TableHead>
-                                            <TableHead className="min-w-[220px]">User & Plan</TableHead>
+                                            <TableHead className="min-w-[250px]">User & Plan</TableHead>
                                             <TableHead className="text-right">Balance</TableHead>
                                             <TableHead className="text-right">Paid</TableHead>
                                             <TableHead className="text-center min-w-[160px]">Standing</TableHead>
