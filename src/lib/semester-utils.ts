@@ -83,27 +83,26 @@ export function calculateAcademicState(
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
 
     // 1. Count distinct institutional boundaries encountered since intake month
-    let cyclesCounted = 0;
+    // We start counting from 1 because the intake month itself is the first phase
+    let cyclesCounted = 1;
     let checkDate = new Date(intakeDate);
     
     let iterations = 0;
-    while ((checkDate < normalizedCurrentDate || isSameMonth(checkDate, normalizedCurrentDate)) && iterations < 600) {
+    while (checkDate < normalizedCurrentDate && iterations < 600) {
+        checkDate = addMonths(checkDate, 1);
         if (cycleStartMonths.includes(checkDate.getMonth())) {
             cyclesCounted++;
         }
-        checkDate = addMonths(checkDate, 1);
         iterations++;
     }
 
     const cyclesPerYear = sortedCycles.length || 1;
 
     // 2. Determine Study Year
-    // Study year is relative to the start. After 2 boundaries, the student enters Year 2.
     const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
     // 3. Determine Study Semester (Relative to student start)
-    // 1st cycle encountered = Semester 1, 2nd = Semester 2, etc.
-    const studySemester = ((cyclesCounted - 1) % (cyclesPerYear || 1)) + 1;
+    const studySemester = ((cyclesCounted - 1) % cyclesPerYear) + 1;
 
     return { 
         year: Math.max(1, academicYear), 
@@ -133,29 +132,29 @@ export function calculateSemesterDateRange(
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
     const cyclesPerYear = sortedCycles.length || 1;
 
-    // Determine total cycle index we need to find (e.g., Year 2, Sem 1 = 3rd cycle encounter)
     const targetCycleCount = (targetYear - 1) * cyclesPerYear + targetSemesterInYear;
 
-    let cyclesFound = 0;
+    let cyclesFound = 1;
     let checkDate = new Date(intakeDate);
-    let startDate: Date | null = null;
+    let startDate: Date | null = checkDate;
     
-    let iterations = 0;
-    while (cyclesFound < targetCycleCount && iterations < 1200) {
-        if (cycleStartMonths.includes(checkDate.getMonth())) {
-            cyclesFound++;
-            if (cyclesFound === targetCycleCount) {
-                startDate = new Date(checkDate);
-                break;
+    if (targetCycleCount > 1) {
+        let iterations = 0;
+        while (cyclesFound < targetCycleCount && iterations < 1200) {
+            checkDate = addMonths(checkDate, 1);
+            if (cycleStartMonths.includes(checkDate.getMonth())) {
+                cyclesFound++;
+                if (cyclesFound === targetCycleCount) {
+                    startDate = new Date(checkDate);
+                    break;
+                }
             }
+            iterations++;
         }
-        checkDate = addMonths(checkDate, 1);
-        iterations++;
     }
 
     if (!startDate) return null;
 
-    // Find the end date (last day of the 6th month if 2 cycles per year)
     const monthsPerSemester = Math.floor(12 / cyclesPerYear);
     const endDate = endOfMonth(addMonths(startDate, monthsPerSemester - 1));
 

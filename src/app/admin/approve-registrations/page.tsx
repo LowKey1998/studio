@@ -20,7 +20,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { auth, db, createNotification } from '@/lib/firebase';
 import { ref, get, update, remove, set, serverTimestamp, push } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
@@ -613,7 +613,7 @@ export default function ApproveRegistrationsPage() {
     const handleCourseSelectionChange = (reqId: string, courseId: string) => {
         setEditingSelections(prev => {
             const currentSelection = prev[reqId] || [];
-            const newSelection = currentSelection.includes(courseId) ? currentSelection.filter(id => id !== courseId) : [...currentSelection, courseId];
+            const newSelection = currentSelection.includes(courseId) ? currentSelection.filter(id => id !== courseId) : [...prev[reqId], courseId];
             return { ...prev, [reqId]: newSelection };
         });
     };
