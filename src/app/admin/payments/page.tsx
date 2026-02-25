@@ -28,14 +28,14 @@ import {
     MoreVertical,
     Plus,
     FileCheck,
-    TrendingUp,
-    Equal
+    TrendingUp
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -213,7 +213,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                 <div className="p-2">
                     <input 
                         placeholder="Search roster..." 
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         value={search} 
                         onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
@@ -277,7 +277,6 @@ export default function PaymentsManagementPage() {
     const [dateRange, setDateRange] = React.useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
     const [minPaidFilter, setMinPaidFilter] = React.useState('');
     const [maxPaidFilter, setMaxPaidFilter] = React.useState('');
-    const [equalPaidFilter, setEqualPaidFilter] = React.useState('');
 
     // Audit State
     const [countIntakeId, setCountIntakeId] = React.useState('all');
@@ -606,13 +605,9 @@ export default function PaymentsManagementPage() {
                 dateMatch = hasPaymentInRange;
             }
 
-            const minMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
-            const maxMatch = maxPaidFilter === '' || p.totalPaid <= parseFloat(maxPaidFilter);
-            const equalMatch = equalPaidFilter === '' || Math.abs(p.totalPaid - parseFloat(equalPaidFilter)) < 0.01;
-
-            return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && dateMatch && minMatch && maxMatch && equalMatch;
+            return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && dateMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, getCurrentServerDate, semesters]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, getCurrentServerDate, semesters]);
 
     const cashFlowStats = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -869,7 +864,13 @@ export default function PaymentsManagementPage() {
                 }
             }
 
-            await update(ref(db), updates);
+            // Remove any undefined keys to avoid unexpected errors
+            const sanitizedUpdates: Record<string, any> = {};
+            Object.entries(updates).forEach(([k, v]) => {
+                if (v !== undefined) sanitizedUpdates[k] = v;
+            });
+
+            await update(ref(db), sanitizedUpdates);
             
             if (studentMessages.length > 0) {
                 Promise.allSettled(studentMessages.map(item => 
