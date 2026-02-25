@@ -323,10 +323,6 @@ export default function PaymentsManagementPage() {
         return () => off(offsetRef);
     }, []);
 
-    /**
-     * Identifies which items are considered "paid" by a given total amount.
-     * Follows priority: Mandatory -> Optional -> Tuition.
-     */
     const calculatePaidItems = React.useCallback((totalPaid: number, breakdown: FeeBreakdown) => {
         let remaining = totalPaid;
         const paid: string[] = [];
@@ -419,14 +415,16 @@ export default function PaymentsManagementPage() {
                 const configSnapshot = (reg.configId && configsData[semesterId]?.[reg.configId]) || (invoice?.configId && configsData[semesterId]?.[invoice.configId]);
                 const activeSemesterRules = configSnapshot || semesterInfo;
 
+                const scholarId = invoice?.scholarshipId || reg.scholarshipId || profile.scholarshipId;
+                const scholarPerc = Number(invoice?.scholarshipPercentage || reg.scholarshipPercentage || (scholarId ? (scholsData[scholarId]?.percentage || 0) : 0));
+
                 if (invoice) {
                     const tuition = Number(invoice.totalTuition || 0);
                     const mandatory = Number(invoice.totalMandatoryFees || 0);
                     const optional = Number(invoice.totalOptionalFees || 0);
                     const late = Number(invoice.lateFee || 0);
-                    const scholarPerc = Number(invoice.scholarshipPercentage || (profile.scholarshipId ? (scholsData[profile.scholarshipId]?.percentage || 0) : 0));
 
-                    const scholarshipAmount = (invoice.applyScholarship || (profile.scholarshipId && !invoice.applyScholarship === false))
+                    const scholarshipAmount = (invoice.applyScholarship || scholarId)
                         ? (tuition * (scholarPerc / 100))
                         : 0;
 
@@ -440,10 +438,6 @@ export default function PaymentsManagementPage() {
                     };
                 } else {
                     isProvisional = true;
-                    const scholarshipId = reg.scholarshipId || profile.scholarshipId;
-                    const hasScholarship = !!reg.applyScholarship || !!profile.scholarshipId;
-                    const percentage = reg.scholarshipPercentage || (profile.scholarshipId ? (scholsData[profile.scholarshipId]?.percentage || 0) : 0);
-
                     const billingOutput = calculateBilling({
                         policy: activeSemesterRules.billingPolicy || 'course',
                         semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
@@ -453,8 +447,8 @@ export default function PaymentsManagementPage() {
                         }),
                         mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
                         optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
-                        applyScholarship: hasScholarship,
-                        scholarshipPercentage: Number(percentage),
+                        applyScholarship: !!reg.applyScholarship || !!scholarId,
+                        scholarshipPercentage: Number(scholarPerc),
                         lateFee: 0 
                     });
 
@@ -472,6 +466,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // STRICT FILTER: Only successful transactions for this specific invoice
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -1283,7 +1278,7 @@ export default function PaymentsManagementPage() {
                                 {paymentInfos.filter(p => p.userId === historyStudent.userId).map(p => (
                                     <TabsContent key={p.semesterId} value={p.semesterId!} className="flex-1 flex flex-col mt-4 overflow-hidden border rounded-xl bg-background shadow-inner">
                                         <div className="p-4 bg-muted/30 border-b flex justify-between items-center"><div><p className="text-sm font-bold">{p.semesterName}</p></div><div className="flex gap-6 text-[10px] font-black uppercase"><span>Due: K{p.totalDue.toFixed(2)}</span><span className="text-green-600">Paid: K{p.totalPaid.toFixed(2)}</span><span className="text-destructive">Bal: K{p.balance.toFixed(2)}</span></div></div>
-                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead><TableHead>Ref / Purpose</TableHead><TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
+                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead>Installment/Purpose<TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
                                         {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (<TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions recorded for this semester.</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
                                     </TabsContent>
                                 ))}

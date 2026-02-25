@@ -25,7 +25,8 @@ import {
     Info,
     Receipt,
     TrendingUp,
-    ArrowRight
+    ArrowRight,
+    GraduationCap
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -83,6 +84,7 @@ export default function StudentDashboardPage() {
         balance: number;
         semesterName: string;
         academicStanding: string;
+        scholarshipInfo?: { name: string; percentage: number };
     } | null>(null);
     const [todaySchedule, setTodaySchedule] = React.useState<TimetableEntry[]>([]);
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
@@ -110,7 +112,7 @@ export default function StudentDashboardPage() {
         const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap, pathsSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap, pathsSnap, scholsSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
                 get(ref(db, 'intakes')),
@@ -125,7 +127,8 @@ export default function StudentDashboardPage() {
                 get(ref(db, 'semesters')),
                 get(ref(db, 'assignments')),
                 get(ref(db, 'settings/assessmentTemplates')),
-                get(ref(db, 'coursePaths'))
+                get(ref(db, 'coursePaths')),
+                get(ref(db, 'scholarships'))
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -143,6 +146,7 @@ export default function StudentDashboardPage() {
             const allAssignments = studentAssSnap.val() || {};
             const allTemplates = templatesSnap.val() || {};
             const allPaths = pathsSnap.val() || {};
+            const allScholarships = scholsSnap.val() || {};
 
             let currentIntakeNameVal = '';
             let matchingSemesterId: string | null = null;
@@ -277,12 +281,15 @@ export default function StudentDashboardPage() {
                     const mandatory = Number(invoice.totalMandatoryFees || 0);
                     const optional = Number(invoice.totalOptionalFees || 0);
                     const late = Number(invoice.lateFee || 0);
-                    const scholarPerc = Number(invoice.scholarshipPercentage || 100);
+                    const scholarId = invoice.scholarshipId || userProfile.scholarshipId;
+                    const scholarship = scholarId ? allScholarships[scholarId] : null;
+                    const scholarPerc = Number(invoice.scholarshipPercentage || scholarship?.percentage || 0);
 
-                    const due = invoice.applyScholarship 
-                        ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
-                        : tuition + mandatory + optional + late;
-                    
+                    const scholarshipAmount = (invoice.applyScholarship || scholarId)
+                        ? (tuition * (scholarPerc / 100))
+                        : 0;
+
+                    const due = tuition - scholarshipAmount + mandatory + optional + late;
                     const paid = allTransactions.filter((t: any) => t.invoiceId === reg.invoiceId).reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
                     
                     setCurrentSemesterFinance({
@@ -290,7 +297,8 @@ export default function StudentDashboardPage() {
                         paid,
                         balance: Math.max(0, due - paid),
                         semesterName: semester?.name || 'Current Semester',
-                        academicStanding: standingLabel
+                        academicStanding: standingLabel,
+                        scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined
                     });
 
                     const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
@@ -426,6 +434,16 @@ export default function StudentDashboardPage() {
                     <Button size="sm" asChild><Link href="/student/payments"><CreditCard className="mr-2 h-4 w-4"/>Pay Fees</Link></Button>
                 </div>
             </div>
+
+            {currentSemesterFinance?.scholarshipInfo && (
+                <Alert className="border-blue-200 bg-blue-50/50 shadow-md">
+                    <GraduationCap className="h-5 w-5 text-blue-600" />
+                    <AlertTitle className="font-bold text-blue-800 uppercase text-[10px] tracking-widest">Scholarship Active</AlertTitle>
+                    <AlertDescription className="text-blue-700 text-sm font-medium">
+                        You are awarded the <strong>{currentSemesterFinance.scholarshipInfo.name}</strong> ({currentSemesterFinance.scholarshipInfo.percentage}% Tuition Waiver).
+                    </AlertDescription>
+                </Alert>
+            )}
 
             {missingPlanPrompt && (
                 <Alert className="border-orange-200 bg-orange-50/50 shadow-md animate-in fade-in slide-in-from-top-4">

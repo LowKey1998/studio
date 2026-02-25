@@ -54,6 +54,7 @@ type Invoice = {
     optionalFees?: string[]; 
     applyScholarship?: boolean; 
     scholarshipPercentage?: number;
+    scholarshipId?: string;
 };
 
 type Transaction = { 
@@ -106,7 +107,8 @@ type PaymentSummary = {
         late: number;
         mandatoryItems?: any[];
         optionalItems?: any[];
-    }
+    };
+    scholarshipInfo?: { name: string; percentage: number };
 };
 
 export default function StudentPaymentsPage() {
@@ -134,7 +136,7 @@ export default function StudentPaymentsPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap, regsSnap, configsSnap] = await Promise.all([
+            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap, regsSnap, configsSnap, scholsSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `invoices/${currentUser.uid}`)),
                 get(ref(db, 'transactions')),
@@ -145,7 +147,8 @@ export default function StudentPaymentsPage() {
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, `registrations/${currentUser.uid}`)),
-                get(ref(db, 'semesterConfigs'))
+                get(ref(db, 'semesterConfigs')),
+                get(ref(db, 'scholarships'))
             ]);
 
             const userProfile = userSnap.val() || {};
@@ -156,6 +159,7 @@ export default function StudentPaymentsPage() {
             const allIntakes = intakesSnap.val() || {};
             const calSettings = calendarSnap.val() || {};
             const allConfigs = configsSnap.val() || {};
+            const allScholarships = scholsSnap.val() || {};
             
             setAllCourses(coursesData);
             setAllSemesters(semestersData);
@@ -194,14 +198,17 @@ export default function StudentPaymentsPage() {
                     const configSnapshot = (reg.configId && allConfigs[semId]?.[reg.configId]) || (invoice?.configId && allConfigs[semId]?.[invoice.configId]);
                     const activeSemesterRules = configSnapshot || semesterInfo;
 
+                    const scholarId = invoice?.scholarshipId || reg.scholarshipId || userProfile.scholarshipId;
+                    const scholarship = scholarId ? allScholarships[scholarId] : null;
+                    const scholarPerc = Number(invoice?.scholarshipPercentage || reg.scholarshipPercentage || scholarship?.percentage || 0);
+
                     if (invoice) {
                         const tuition = Number(invoice.totalTuition || 0);
                         const mandatory = Number(invoice.totalMandatoryFees || 0);
                         const optional = Number(invoice.totalOptionalFees || 0);
                         const late = Number(invoice.lateFee || 0);
-                        const scholarPerc = Number(invoice.scholarshipPercentage || 100);
 
-                        const scholarshipAmount = invoice.applyScholarship 
+                        const scholarshipAmount = (invoice.applyScholarship || scholarId)
                             ? (tuition * (scholarPerc / 100))
                             : 0;
 
@@ -224,8 +231,8 @@ export default function StudentPaymentsPage() {
                             }),
                             mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
                             optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
-                            applyScholarship: !!reg.applyScholarship,
-                            scholarshipPercentage: Number(reg.scholarshipPercentage || 0),
+                            applyScholarship: !!reg.applyScholarship || !!scholarId,
+                            scholarshipPercentage: scholarPerc,
                             lateFee: 0 
                         });
 
@@ -243,6 +250,7 @@ export default function StudentPaymentsPage() {
                         };
                     }
 
+                    // STRICT FILTER: Only successful transactions for this specific invoice
                     const invoiceTransactions = allTransactions.filter(t => t.invoiceId === reg.invoiceId);
                     const totalPaid = invoiceTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
                     const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -264,7 +272,8 @@ export default function StudentPaymentsPage() {
                         paidPercentage,
                         thresholdMet,
                         isProvisional,
-                        breakdown: billingResults.breakdown
+                        breakdown: billingResults.breakdown,
+                        scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined
                     };
                 })
                 .filter((s): s is PaymentSummary => s !== null);
@@ -304,7 +313,7 @@ export default function StudentPaymentsPage() {
             doc.text(`Invoice ID: ${p.invoice?.invoiceId}`, 190, 40, { align: 'right' });
             doc.text(`Semester: ${semester?.name || p.semesterName}`, 14, 45);
 
-            const scholarPerc = Number(p.invoice?.scholarshipPercentage || 100);
+            const scholarPerc = Number(p.scholarshipInfo?.percentage || 0);
             const body = (p.invoice?.courses || []).map(id => {
                 const cost = allCourses[id]?.cost || 0;
                 const finalCost = p.invoice?.applyScholarship ? cost * (1 - (scholarPerc/100)) : cost;
@@ -392,19 +401,54 @@ export default function StudentPaymentsPage() {
                                         </AlertDescription>
                                     </Alert>
                                 )}
+                                
+                                {payment.scholarshipInfo && (
+                                    <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                                        <div className="p-2 bg-blue-100 rounded-lg">
+                                            <GraduationCap className="h-4 w-4 text-blue-600" />
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] font-black uppercase text-blue-800 tracking-tighter">Applied Scholarship</p>
+                                            <p className="text-xs font-bold text-blue-700">{payment.scholarshipInfo.name} ({payment.scholarshipInfo.percentage}% Waiver)</p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid md:grid-cols-2 gap-8">
                                     <div className="space-y-4">
                                         <h4 className="text-[10px] font-black uppercase text-primary flex items-center gap-2"><Receipt className="h-3 w-3" /> Billing Breakdown</h4>
                                         <div className="rounded-xl border p-4 bg-card space-y-3 shadow-inner">
                                             <div className="flex justify-between text-sm">
-                                                <span>Total Due</span>
+                                                <span>Total Tuition</span>
                                                 <div className="text-right">
-                                                    <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
+                                                    <span className="font-bold">ZMW {payment.breakdown.tuition.toFixed(2)}</span>
                                                 </div>
                                             </div>
-                                            <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
+                                            {payment.breakdown.scholarship > 0 && (
+                                                <div className="flex justify-between text-sm text-blue-600 italic">
+                                                    <span>Scholarship Waiver ({payment.scholarshipInfo?.percentage}%)</span>
+                                                    <span className="font-bold">- ZMW {payment.breakdown.scholarship.toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                            {(payment.breakdown.mandatory + payment.breakdown.optional) > 0 && (
+                                                <div className="flex justify-between text-sm text-muted-foreground">
+                                                    <span>Mandatory & Optional Fees</span>
+                                                    <span className="font-bold">ZMW {(payment.breakdown.mandatory + payment.breakdown.optional).toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                            {payment.breakdown.late > 0 && (
+                                                <div className="flex justify-between text-sm text-destructive">
+                                                    <span>Late Registration Fees</span>
+                                                    <span className="font-bold">ZMW {payment.breakdown.late.toFixed(2)}</span>
+                                                </div>
+                                            )}
                                             <Separator />
-                                            <div className="flex justify-between font-black text-destructive"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs font-bold opacity-60">Net Payable</span>
+                                                <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
+                                            <div className="flex justify-between font-black text-destructive border-t pt-2 mt-2"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>
                                         </div>
                                     </div>
                                     <div className="space-y-4">
