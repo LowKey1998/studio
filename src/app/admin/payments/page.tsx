@@ -671,6 +671,12 @@ export default function PaymentsManagementPage() {
                             updatedRow.totalDue = paymentInfo.totalDue;
                             updatedRow.totalPaid = paymentInfo.totalPaid;
                             updatedRow.breakdown = paymentInfo.breakdown;
+                            
+                            // Auto-load checkbox status: Pre-select everything that makes up the bill
+                            const autoAllocations = ['Tuition'];
+                            paymentInfo.breakdown.mandatoryItems?.forEach(f => autoAllocations.push(f.name));
+                            paymentInfo.breakdown.optionalItems?.forEach(f => autoAllocations.push(f.name));
+                            updatedRow.allocations = autoAllocations;
                         }
                     } else if (studentIntakeSemesters.length > 0) {
                         const firstSem = studentIntakeSemesters[0];
@@ -698,6 +704,12 @@ export default function PaymentsManagementPage() {
                         updatedRow.totalDue = paymentInfo.totalDue;
                         updatedRow.totalPaid = paymentInfo.totalPaid;
                         updatedRow.breakdown = paymentInfo.breakdown;
+                        
+                        // Auto-load checkbox status for changed semester
+                        const autoAllocations = ['Tuition'];
+                        paymentInfo.breakdown.mandatoryItems?.forEach(f => autoAllocations.push(f.name));
+                        paymentInfo.breakdown.optionalItems?.forEach(f => autoAllocations.push(f.name));
+                        updatedRow.allocations = autoAllocations;
                     }
                 }
 
@@ -716,6 +728,10 @@ export default function PaymentsManagementPage() {
             availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(semesters.find(sem => sem.id === student.semesterId)?.year || '1'));
         }
 
+        const autoAllocations = ['Tuition'];
+        student.breakdown.mandatoryItems?.forEach(f => autoAllocations.push(f.name));
+        student.breakdown.optionalItems?.forEach(f => autoAllocations.push(f.name));
+
         const initialRow: PaymentRecord = {
             key: Date.now(),
             userId: student.userId,
@@ -727,7 +743,7 @@ export default function PaymentsManagementPage() {
             breakdown: student.breakdown,
             amount: '',
             comment: '',
-            allocations: [],
+            allocations: autoAllocations,
             availableYears,
             availableSemesters
         };
