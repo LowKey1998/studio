@@ -25,22 +25,26 @@ type Student = {
     email: string;
     programmeId?: string;
     programmeName?: string;
+    intakeId?: string;
     scholarshipId?: string;
     scholarshipName?: string;
     scholarshipPercentage?: number;
 };
 
 type ScholarshipType = { id: string; name: string; percentage: number; donor?: string; };
+type Intake = { id: string; name: string; };
 
 export default function ScholarshipAssignmentsPage() {
     const [students, setStudents] = React.useState<Student[]>([]);
     const [scholarships, setScholarships] = React.useState<ScholarshipType[]>([]);
     const [programmes, setProgrammes] = React.useState<any[]>([]);
+    const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
+    const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [scholarshipFilter, setScholarshipFilter] = React.useState('all');
 
     const { toast } = useToast();
@@ -49,16 +53,20 @@ export default function ScholarshipAssignmentsPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [usersSnap, progSnap, scholSnap] = await Promise.all([
+                const [usersSnap, progSnap, scholSnap, intakesSnap] = await Promise.all([
                     get(ref(db, 'users')),
                     get(ref(db, 'programmes')),
-                    get(ref(db, 'scholarships'))
+                    get(ref(db, 'scholarships')),
+                    get(ref(db, 'intakes'))
                 ]);
 
                 const progs = progSnap.val() || {};
                 const schols = scholSnap.val() || {};
+                const ints = intakesSnap.val() || {};
+                
                 setProgrammes(Object.entries(progs).map(([id, d]:[string, any]) => ({ id, ...d })));
                 setScholarships(Object.entries(schols).map(([id, d]:[string, any]) => ({ id, ...d })));
+                setIntakes(Object.entries(ints).map(([id, d]:[string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
                 if (usersSnap.exists()) {
                     const data = usersSnap.val();
@@ -141,10 +149,11 @@ export default function ScholarshipAssignmentsPage() {
         return students.filter(s => {
             const searchMatch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase());
             const progMatch = programmeFilter === 'all' || s.programmeId === programmeFilter;
+            const intakeMatch = intakeFilter === 'all' || s.intakeId === intakeFilter;
             const scholMatch = scholarshipFilter === 'all' ? true : (scholarshipFilter === 'active' ? !!s.scholarshipId : !s.scholarshipId);
-            return searchMatch && progMatch && scholMatch;
+            return searchMatch && progMatch && intakeMatch && scholMatch;
         });
-    }, [students, searchTerm, programmeFilter, scholarshipFilter]);
+    }, [students, searchTerm, programmeFilter, intakeFilter, scholarshipFilter]);
 
     return (
         <div className="space-y-6">
@@ -163,13 +172,23 @@ export default function ScholarshipAssignmentsPage() {
 
             <Card>
                 <CardHeader>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
                             <div className="relative">
                                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input placeholder="Name or ID..." className="pl-8 h-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Intake</Label>
+                            <Select value={intakeFilter} onValueChange={setIntakeFilter}>
+                                <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Intakes</SelectItem>
+                                    {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Programme</Label>
@@ -182,7 +201,7 @@ export default function ScholarshipAssignmentsPage() {
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Scholarship Status</Label>
+                            <Label className="text-[10px] font-black uppercase">Status</Label>
                             <Select value={scholarshipFilter} onValueChange={setScholarshipFilter}>
                                 <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
                                 <SelectContent>

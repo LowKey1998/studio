@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -253,6 +252,7 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [allScholarships, setAllScholarships] = React.useState<Record<string, any>>({});
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
@@ -307,7 +307,8 @@ export default function PaymentsManagementPage() {
         academicCalendar: ref(db, 'settings/academicCalendar'),
         paymentPlans: ref(db, 'settings/paymentPlans'),
         configs: ref(db, 'semesterConfigs'),
-        defaults: ref(db, 'settings/admin/finance/filters')
+        defaults: ref(db, 'settings/admin/finance/filters'),
+        scholarships: ref(db, 'scholarships')
     }), []);
 
     React.useEffect(() => {
@@ -338,6 +339,7 @@ export default function PaymentsManagementPage() {
             const plansData = store.paymentPlans || {};
             const coursesData = store.courses || {};
             const configsData = store.configs || {};
+            const scholsData = store.scholarships || {};
 
             const transactionsList: Transaction[] = [];
             for (const txId in txsData) {
@@ -403,6 +405,12 @@ export default function PaymentsManagementPage() {
                         };
                     } else {
                         isProvisional = true;
+                        
+                        // Handle Scholarship Fallback: If not explicitly set in reg, check student profile
+                        const scholarshipId = reg.scholarshipId || profile.scholarshipId;
+                        const hasScholarship = !!reg.applyScholarship || !!profile.scholarshipId;
+                        const percentage = reg.scholarshipPercentage || (profile.scholarshipId ? (scholsData[profile.scholarshipId]?.percentage || 0) : 0);
+
                         const billingOutput = calculateBilling({
                             policy: activeSemesterRules.billingPolicy || 'course',
                             semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
@@ -412,8 +420,8 @@ export default function PaymentsManagementPage() {
                             }),
                             mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
                             optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
-                            applyScholarship: !!reg.applyScholarship,
-                            scholarshipPercentage: Number(reg.scholarshipPercentage || 0),
+                            applyScholarship: hasScholarship,
+                            scholarshipPercentage: Number(percentage),
                             lateFee: 0 
                         });
 
@@ -466,7 +474,7 @@ export default function PaymentsManagementPage() {
                         programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
                         semesterName: semesterInfo.name, registrationDate: reg.registrationDate,
                         invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
-                        thresholdMet, penaltiesActive, isScholarship: !!reg.applyScholarship,
+                        thresholdMet, penaltiesActive, isScholarship: !!reg.applyScholarship || !!profile.scholarshipId,
                         paidPercentage, targetThreshold: threshold, gracePeriod: grace,
                         status: balance <= 0.01 ? 'Paid' : 'Pending',
                         paymentPlanName: reg.paymentPlan || null,
@@ -499,6 +507,7 @@ export default function PaymentsManagementPage() {
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.paymentPlans, (s) => { setAllPaymentPlans(Object.keys(s.val() || {}).map(id => ({id, ...s.val()[id]}))); store.paymentPlans = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.scholarships, (s) => { setAllScholarships(s.val() || {}); store.scholarships = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.defaults, (s) => {
             if (s.exists()) {
                 const d = s.val();
