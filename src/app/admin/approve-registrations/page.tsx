@@ -294,7 +294,7 @@ export default function ApproveRegistrationsPage() {
                             });
 
                             const amountPaid = allTransactions
-                                .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
+                                .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful' && !!registration.invoiceId)
                                 .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
                             const reqCourseIds = getCoursesFromReg(registration.courses);
@@ -373,7 +373,7 @@ export default function ApproveRegistrationsPage() {
                     }
 
                     const totalPaid = allTransactions
-                        .filter(tx => tx.userId === userId && tx.invoiceId === invoiceId && tx.status === 'successful')
+                        .filter(tx => tx.userId === userId && tx.invoiceId === invoiceId && tx.status === 'successful' && !!invoiceId)
                         .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
                     return {
@@ -724,7 +724,7 @@ export default function ApproveRegistrationsPage() {
                                                     <div className="flex gap-2 self-start sm:self-end">
                                                         <Button size="sm" variant="destructive" onClick={() => handleApproval(request, 'decline')} disabled={!!actionLoading}><X className="h-4 w-4" /></Button>
                                                         {request.applyScholarship ? (
-                                                            <Button size="sm" onClick={() => setScholarshipReviewRequest(request)} disabled={!!actionLoading} variant="default" className="bg-blue-600 hover:bg-blue-700">{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />} Review Scholarship</Button>
+                                                            <Button size="sm" onClick={() => setScholarshipReviewRequest(request)} disabled={!!actionLoading} variant="default" className="bg-blue-600 hover:bg-blue-700">{actionLoading === request.userId ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />} Review Scholarship</Button>
                                                         ) : (
                                                             <Button size="sm" onClick={() => handleApproval(request, 'approve')} disabled={!!actionLoading}>{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button>
                                                         )}

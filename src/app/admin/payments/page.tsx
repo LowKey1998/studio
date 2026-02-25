@@ -395,8 +395,8 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // IMPORTANT: Fixed strict lookup by invoiceId
-                const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
+                // STRICT ATTRIBUTION BY INVOICE ID
+                const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
                 
@@ -556,7 +556,7 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
-                // FIXED: Reset total paid and look up specific semester total for selected row context
+                // STRICT LOOKUP BY SELECTED SEMESTER CONTEXT
                 if (field === 'semesterId' || (field === 'year' && updatedRow.semesterId)) {
                     const semId = field === 'semesterId' ? value : updatedRow.semesterId;
                     const info = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === semId);

@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Html5Qrcode } from 'html5-qrcode';
+import { Separator } from '@/components/ui/separator';
 
 type Book = {
     id: string;
@@ -149,9 +150,12 @@ export default function LibraryPage() {
     };
 
     const fetchBookByIsbn = async (isbn: string) => {
+        const cleanIsbn = isbn.replace(/\D/g, '');
+        if (!cleanIsbn) return;
+
         setIsSearchingIsbn(true);
         try {
-            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
             const data = await response.json();
             if (data.totalItems > 0) {
                 const item = data.items[0].volumeInfo;
@@ -159,7 +163,7 @@ export default function LibraryPage() {
                 setAuthor(item.authors ? item.authors.join(', ') : '');
                 setGenre(item.categories ? item.categories.join(', ') : '');
                 setYear(item.publishedDate ? item.publishedDate.split('-')[0] : '');
-                setBarcode(isbn);
+                setBarcode(cleanIsbn);
                 if (item.imageLinks?.thumbnail) {
                     setImageUrl(item.imageLinks.thumbnail.replace('http://', 'https://'));
                 }
@@ -354,7 +358,7 @@ export default function LibraryPage() {
                                     <Label>Book Cover</Label>
                                      <div className="flex items-center gap-4">
                                         <div className="relative w-16 h-24 border rounded overflow-hidden bg-muted shrink-0">
-                                            {imageUrl ? <Image src={imageUrl} alt="preview" layout="fill" objectFit="cover" data-ai-hint="book cover" /> : <div className="flex items-center justify-center h-full text-muted-foreground"><Library className="h-6 w-6 opacity-20"/></div>}
+                                            {imageUrl ? <img src={imageUrl} alt="preview" className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-muted-foreground"><Library className="h-6 w-6 opacity-20"/></div>}
                                         </div>
                                         <div className="flex-1 space-y-2">
                                             <Input id="imageUrl" placeholder="Image URL (Auto-fills from ISBN)" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={formLoading || !!imageFile} className="text-xs h-8" />
