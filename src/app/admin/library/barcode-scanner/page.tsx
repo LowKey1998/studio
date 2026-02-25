@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Barcode, X, User, Check, Power, PowerOff } from 'lucide-react';
+import { Barcode, X, User, Check, Power, PowerOff, AlertCircle } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
@@ -17,13 +16,14 @@ const SCANNER_REGION_ID = "barcode-scanner-region";
 
 type ScannedBook = { id: string, title: string, status: string, currentHolder?: string };
 type ScannedUser = { uid: string, name: string };
-type LibraryBook = { id: string, title: string, barcode?: string, status: 'Available' | 'Checked Out' | 'Requested'; [key: string]: any };
-type AppUser = { uid: string, id: string; name: string; [key: string]: any };
+type LibraryBook = { id: string; title: string; barcode?: string; status: 'Available' | 'Checked Out' | 'Requested'; [key: string]: any };
+type AppUser = { uid: string; id: string; name: string; [key: string]: any };
 
 export default function BarcodeScannerPage() {
     const [scanner, setScanner] = React.useState<Html5Qrcode | null>(null);
     const [isScannerActive, setIsScannerActive] = React.useState(false);
     const [scannerError, setScannerError] = React.useState<string | null>(null);
+    const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
     const [mode, setMode] = React.useState<'checkout' | 'checkin'>('checkout');
 
     const [allBooks, setAllBooks] = React.useState<LibraryBook[]>([]);
@@ -59,12 +59,17 @@ export default function BarcodeScannerPage() {
     const startScanner = React.useCallback(async () => {
         if (isScannerActive) return;
         
-        setIsScannerActive(true);
-        setScannerError(null);
-        setScannedBook(null);
-        setScannedUser(null);
-
         try {
+            // First request camera permissions explicitly as per guidelines
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            setHasCameraPermission(true);
+            stream.getTracks().forEach(track => track.stop()); // Stop immediate stream
+
+            setIsScannerActive(true);
+            setScannerError(null);
+            setScannedBook(null);
+            setScannedUser(null);
+
             await Html5Qrcode.getCameras();
             const qrCodeScanner = new Html5Qrcode(SCANNER_REGION_ID, { verbose: false });
             setScanner(qrCodeScanner);
@@ -108,6 +113,7 @@ export default function BarcodeScannerPage() {
                 setScannerError("Could not start scanner. Please ensure you have a camera and have granted permissions.");
             });
         } catch (err) {
+            setHasCameraPermission(false);
             setScannerError("Camera not found or permissions denied.");
             setIsScannerActive(false);
         }
@@ -188,7 +194,7 @@ export default function BarcodeScannerPage() {
             await update(ref(db, `libraryBooks/${scannedBook.id}`), { status: 'Checked Out' });
             await createNotification(
                 scannedUser.uid,
-                `A book "${scannedBook.title}" has been checked out to you. It is due on ${format(returnDate, 'PPP')}.`,
+                `A book "${book.title}" has been checked out to you. It is due on ${format(returnDate, 'PPP')}.`,
                 '/student/library'
             );
             toast({ title: "Book Checked Out", description: `${scannedBook.title} handed over to ${scannedUser.name}.` });
@@ -218,6 +224,15 @@ export default function BarcodeScannerPage() {
                  <div className="w-full aspect-video border rounded-md bg-muted flex items-center justify-center" id={SCANNER_REGION_ID}>
                     {!isScannerActive && <Barcode className="h-16 w-16 text-muted-foreground"/>}
                 </div>
+                {hasCameraPermission === false && (
+                    <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Camera Access Required</AlertTitle>
+                        <AlertDescription>
+                            Please allow camera access in your browser settings to use the barcode scanner.
+                        </AlertDescription>
+                    </Alert>
+                )}
                 {scannerError && <Alert variant="destructive"><AlertDescription>{scannerError}</AlertDescription></Alert>}
 
                  <div className="grid md:grid-cols-2 gap-4">

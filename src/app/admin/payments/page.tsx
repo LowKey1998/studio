@@ -556,7 +556,6 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
-                // STRICT LOOKUP BY SELECTED SEMESTER CONTEXT
                 if (field === 'semesterId' || (field === 'year' && updatedRow.semesterId)) {
                     const semId = field === 'semesterId' ? value : updatedRow.semesterId;
                     const info = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === semId);
