@@ -3,7 +3,6 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
-    ChevronDown, 
     CheckCircle2, 
     Loader2, 
     Download, 
@@ -13,7 +12,6 @@ import {
     PlusCircle,
     Users,
     Scale,
-    Trash2,
     ChevronsUpDown,
     Clock,
     CalendarDays,
@@ -22,7 +20,6 @@ import {
     Save,
     Info,
     X,
-    Banknote,
     MoreVertical,
     Plus,
     FileCheck,
@@ -40,7 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, set, push, onValue, off, serverTimestamp, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth, startOfMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';

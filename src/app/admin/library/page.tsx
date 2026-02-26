@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, BookCheck, BookX, PlusCircle, Loader2, Library, BookUp, Upload, Trash2, Pencil, Barcode, X, Camera, Zap, AlertCircle } from "lucide-react";
 import Image from 'next/image';
-import { db, auth, storage } from '@/lib/firebase';
-import { ref, get, set, push, onValue, serverTimestamp, update, remove } from 'firebase/database';
+import { db, storage } from '@/lib/firebase';
+import { ref, get, set, push, onValue, update, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -81,13 +80,13 @@ export default function LibraryPage() {
         const booksRef = ref(db, 'libraryBooks');
         const unsubscribe = onValue(booksRef, (snapshot) => {
             if (snapshot.exists()) {
-                const booksData = snapshot.val();
-                const booksList: Book[] = Object.keys(booksData).map(key => ({
+                const data = snapshot.val();
+                const list: Book[] = Object.keys(data).map(key => ({
                     id: key,
-                    ...booksData[key],
-                    hint: "book cover", 
+                    ...data[key],
+                    hint: "book cover",
                 }));
-                setBooks(booksList.reverse());
+                setBooks(list.reverse());
             } else {
                 setBooks([]);
             }
@@ -97,10 +96,10 @@ export default function LibraryPage() {
         return () => {
             unsubscribe();
             if (scanner) {
-                scanner.stop().catch(console.error);
+                scanner.stop().catch(() => {});
             }
         };
-    }, []);
+    }, [scanner]);
 
     // Handle scanner initialization after DOM update
     React.useEffect(() => {
@@ -131,7 +130,7 @@ export default function LibraryPage() {
             const timer = setTimeout(start, 300);
             return () => {
                 clearTimeout(timer);
-                if (qrScanner) qrScanner.stop().catch(console.error);
+                if (qrScanner) qrScanner.stop().catch(() => {});
             };
         }
     }, [isScannerActive, scanner]);
