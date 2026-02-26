@@ -393,6 +393,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // IMPORTANT: Filter transactions strictly by invoiceId to prevent cross-intake data sharing
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -834,7 +835,10 @@ export default function PaymentsManagementPage() {
                     <div className="flex-1 overflow-y-auto pr-4 space-y-4 py-4">
                         {bulkPaymentRows.map((row, idx) => {
                             const amountNum = parseFloat(row.amount) || 0;
-                            const afterPay = (row.totalDue || 0) - (row.totalPaid || 0) - amountNum;
+                            const currentPaid = Number(row.totalPaid || 0);
+                            const projectedPaid = currentPaid + amountNum;
+                            const afterPay = (row.totalDue || 0) - projectedPaid;
+                            
                             return (
                             <Card key={row.key} className="border-l-4 border-l-primary relative">
                                 <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -864,7 +868,13 @@ export default function PaymentsManagementPage() {
                                         <div className="flex items-center justify-between"><Label className="font-black text-[10px] uppercase text-muted-foreground tracking-widest">SEMESTER SUMMARY</Label><Badge variant="outline" className="h-6 gap-1 border-primary/30 text-[10px] font-bold">Audit <Info className="h-3 w-3"/></Badge></div>
                                         <div className="grid grid-cols-3 divide-x rounded-xl border bg-card shadow-inner overflow-hidden">
                                             <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-orange-500 uppercase">Due</span><span className="text-lg font-black text-orange-500">K{(row.totalDue || 0).toLocaleString()}</span></div>
-                                            <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-green-600 uppercase">Paid</span><span className="text-xl font-black text-green-600">K{(row.totalPaid || 0).toLocaleString()}</span></div>
+                                            <div className="p-3 flex flex-col items-center gap-1">
+                                                <span className="text-[9px] font-bold text-green-600 uppercase">Paid</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-xl font-black text-green-600">K{projectedPaid.toLocaleString()}</span>
+                                                    {amountNum > 0 && <span className="text-[8px] opacity-60 font-bold">({currentPaid.toLocaleString()} + {amountNum.toLocaleString()})</span>}
+                                                </div>
+                                            </div>
                                             <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-red-600 uppercase">New Bal</span><span className="text-xl font-black text-red-600">K{afterPay.toLocaleString()}</span></div>
                                         </div>
                                         <Separator />
@@ -957,91 +967,40 @@ export default function PaymentsManagementPage() {
                                 </Badge>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="p-3 rounded-lg border bg-muted/20 flex flex-col items-center gap-1">
-                                    <span className="text-[9px] font-bold opacity-60">TOTAL DUE</span>
-                                    <span className="font-black">ZMW {selectedDetail?.totalDue.toFixed(2)}</span>
-                                </div>
-                                <div className="p-3 rounded-lg border bg-green-50/50 flex flex-col items-center gap-1">
-                                    <span className="text-[9px] font-bold text-green-700 opacity-60">TOTAL PAID</span>
-                                    <span className="font-black text-green-700">ZMW {selectedDetail?.totalPaid.toFixed(2)}</span>
-                                </div>
-                                <div className="p-3 rounded-lg border bg-red-50/50 flex flex-col items-center gap-1">
-                                    <span className="text-[9px] font-bold text-red-700 opacity-60">OUTSTANDING</span>
-                                    <span className="font-black text-red-700">ZMW {selectedDetail?.balance.toFixed(2)}</span>
-                                </div>
-                                <div className="p-3 rounded-lg border bg-primary/5 flex flex-col items-center gap-1">
-                                    <span className="text-[9px] font-bold text-primary opacity-60">THRESHOLD</span>
-                                    <span className="font-black text-primary">{selectedDetail?.targetThreshold}%</span>
-                                </div>
+                                <div className="p-3 rounded-lg border bg-muted/20 flex flex-col items-center gap-1"><span className="text-[9px] font-bold opacity-60">TOTAL DUE</span><span className="font-black">ZMW {selectedDetail?.totalDue.toFixed(2)}</span></div>
+                                <div className="p-3 rounded-lg border bg-green-50/50 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-green-700 opacity-60">TOTAL PAID</span><span className="font-black text-green-700">ZMW {selectedDetail?.totalPaid.toFixed(2)}</span></div>
+                                <div className="p-3 rounded-lg border bg-red-50/50 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-red-700 opacity-60">OUTSTANDING</span><span className="font-black text-red-700">ZMW {selectedDetail?.balance.toFixed(2)}</span></div>
+                                <div className="p-3 rounded-lg border bg-primary/5 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-primary opacity-60">THRESHOLD</span><span className="font-black text-primary">{selectedDetail?.targetThreshold}%</span></div>
                             </div>
                         </section>
 
                         <section className="space-y-4">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-                                <ReceiptText className="h-3 w-3" /> Itemized Billing Breakdown
-                            </Label>
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2"><ReceiptText className="h-3 w-3" /> Itemized Billing Breakdown</Label>
                             <div className="border rounded-xl overflow-hidden shadow-sm bg-card">
                                 <Table>
                                     <TableBody>
-                                        <TableRow>
-                                            <TableCell className="text-xs font-medium">Base Tuition Fees</TableCell>
-                                            <TableCell className="text-right font-mono text-xs">{selectedDetail?.breakdown.tuition.toFixed(2)}</TableCell>
-                                        </TableRow>
+                                        <TableRow><TableCell className="text-xs font-medium">Base Tuition Fees</TableCell><TableCell className="text-right font-mono text-xs">{selectedDetail?.breakdown.tuition.toFixed(2)}</TableCell></TableRow>
                                         {selectedDetail?.breakdown.scholarship && selectedDetail.breakdown.scholarship > 0 ? (
-                                            <TableRow className="text-blue-600 bg-blue-50/20">
-                                                <TableCell className="text-xs italic flex items-center gap-2"><GraduationCap className="h-3 w-3"/>Scholarship Waiver</TableCell>
-                                                <TableCell className="text-right font-mono text-xs">- {selectedDetail.breakdown.scholarship.toFixed(2)}</TableCell>
-                                            </TableRow>
+                                            <TableRow className="text-blue-600 bg-blue-50/20"><TableCell className="text-xs italic flex items-center gap-2"><GraduationCap className="h-3 w-3"/>Scholarship Waiver</TableCell><TableCell className="text-right font-mono text-xs">- {selectedDetail.breakdown.scholarship.toFixed(2)}</TableCell></TableRow>
                                         ) : null}
-                                        {selectedDetail?.breakdown.mandatoryItems?.map((f, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell className="text-xs">{f.name}</TableCell>
-                                                <TableCell className="text-right font-mono text-xs">{Number(f.amount).toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                        {selectedDetail?.breakdown.optionalItems?.map((f, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell className="text-xs text-muted-foreground">{f.name}</TableCell>
-                                                <TableCell className="text-right font-mono text-xs">{Number(f.amount).toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                        {selectedDetail?.breakdown.late && selectedDetail.breakdown.late > 0 ? (
-                                            <TableRow className="text-destructive bg-red-50/20">
-                                                <TableCell className="text-xs font-bold">Late Registration Fee</TableCell>
-                                                <TableCell className="text-right font-mono text-xs">{selectedDetail.breakdown.late.toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        ) : null}
+                                        {selectedDetail?.breakdown.mandatoryItems?.map((f, i) => (<TableRow key={i}><TableCell className="text-xs">{f.name}</TableCell><TableCell className="text-right font-mono text-xs">{Number(f.amount).toFixed(2)}</TableCell></TableRow>))}
+                                        {selectedDetail?.breakdown.optionalItems?.map((f, i) => (<TableRow key={i}><TableCell className="text-xs text-muted-foreground">{f.name}</TableCell><TableCell className="text-right font-mono text-xs">{Number(f.amount).toFixed(2)}</TableCell></TableRow>))}
+                                        {selectedDetail?.breakdown.late && selectedDetail.breakdown.late > 0 ? (<TableRow className="text-destructive bg-red-50/20"><TableCell className="text-xs font-bold">Late Registration Fee</TableCell><TableCell className="text-right font-mono text-xs">{selectedDetail.breakdown.late.toFixed(2)}</TableCell></TableRow>) : null}
                                     </TableBody>
                                 </Table>
                             </div>
                         </section>
 
                         <section className="space-y-4">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-                                <History className="h-3 w-3" /> Transaction History
-                            </Label>
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2"><History className="h-3 w-3" /> Transaction History</Label>
                             <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
                                 <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-muted/50">
-                                            <TableHead className="h-8 text-[10px]">Date</TableHead>
-                                            <TableHead className="h-8 text-[10px]">Reference</TableHead>
-                                            <TableHead className="h-8 text-[10px]">Method</TableHead>
-                                            <TableHead className="h-8 text-[10px] text-right">Credit</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
+                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Reference</TableHead><TableHead className="h-8 text-[10px]">Method</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {selectedDetail?.transactions.map((tx, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                <TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell>
-                                                <TableCell className="text-[10px] uppercase font-bold opacity-70">{tx.method || 'Online'}</TableCell>
-                                                <TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
-                                            </TableRow>
+                                            <TableRow key={i}><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell><TableCell className="text-[10px] uppercase font-bold opacity-70">{tx.method || 'Online'}</TableCell><TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell></TableRow>
                                         ))}
-                                        {selectedDetail?.transactions.length === 0 && (
-                                            <TableRow><TableCell colSpan={4} className="h-20 text-center text-xs text-muted-foreground italic">No payments recorded for this semester.</TableCell></TableRow>
-                                        )}
+                                        {selectedDetail?.transactions.length === 0 && (<TableRow><TableCell colSpan={4} className="h-20 text-center text-xs text-muted-foreground italic">No payments recorded for this semester.</TableCell></TableRow>)}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -1050,11 +1009,7 @@ export default function PaymentsManagementPage() {
                     
                     <DialogFooter className="bg-muted/5 p-4 border-t rounded-b-lg">
                         <DialogClose asChild><Button variant="outline">Close Audit</Button></DialogClose>
-                        {selectedDetail && selectedDetail.balance > 0.01 && (
-                            <Button onClick={() => { setIsDetailOpen(false); handleRowPay(selectedDetail); }} className="font-bold">
-                                <Wallet className="mr-2 h-4 w-4"/> Record Payment Now
-                            </Button>
-                        )}
+                        {selectedDetail && selectedDetail.balance > 0.01 && (<Button onClick={() => { setIsDetailOpen(false); handleRowPay(selectedDetail); }} className="font-bold"><Wallet className="mr-2 h-4 w-4"/> Record Payment Now</Button>)}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
