@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -69,7 +70,7 @@ export default function ScholarshipAssignmentsPage() {
                 setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
                 if (usersSnap.exists()) {
-                    const data = snapshot.val();
+                    const data = usersSnap.val();
                     const list = Object.keys(data)
                         .filter(uid => data[uid].role === 'Student')
                         .map(uid => {
