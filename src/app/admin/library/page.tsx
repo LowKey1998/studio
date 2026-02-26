@@ -421,7 +421,7 @@ export default function LibraryPage() {
                                 <div className="relative h-56 w-full">
                                     <Image src={book.image} alt={`Cover of ${book.title}`} layout="fill" objectFit="cover" data-ai-hint={book.hint} />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <Button variant="secondary" size="sm" onClick={() => handleOpenDialog(book)} className="font-bold"><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
+                                        <Button variant="secondary" size="sm" onClick={() => handleOpenDialog(book)} className="font-bold"><Pencil className="mr-2 h-4 w-4"/>Edit Details</Button>
                                     </div>
                                 </div>
                                 <div className="p-4"><CardTitle className="font-headline text-lg leading-tight line-clamp-1">{book.title}</CardTitle><CardDescription className="line-clamp-1">by {book.author}</CardDescription></div>

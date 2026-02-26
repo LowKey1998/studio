@@ -156,7 +156,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; isFeesSet?: boolean; activeConfigId?: string; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; isFeesSet?: boolean; activeConfigId?: string; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
@@ -393,7 +393,6 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // IMPORTANT: Filter transactions strictly by invoiceId to prevent cross-intake data sharing
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
