@@ -351,7 +351,8 @@ export default function PaymentsManagementPage() {
                 const activeSemesterRules = configSnapshot || semesterInfo;
 
                 const scholarId = invoice?.scholarshipId || reg.scholarshipId || profile.scholarshipId;
-                const scholarPerc = Number(invoice?.scholarshipPercentage || reg.scholarshipPercentage || (scholarId ? (scholsData[scholarId]?.percentage || 0) : 0));
+                const scholarship = scholarId ? scholsData[scholarId] : null;
+                const scholarPerc = Number(invoice?.scholarshipPercentage || reg.scholarshipPercentage || scholarship?.percentage || 0);
 
                 if (invoice) {
                     const tuition = Number(invoice.totalTuition || 0);
@@ -394,6 +395,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // IMPORTANT: Filter transactions STRICTLY by user AND the specific invoice ID for this phase
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -712,6 +714,13 @@ export default function PaymentsManagementPage() {
         }).length;
     }, [allStudents, countIntakeId, countProgrammeId]);
 
+    const cashFlowCards = [
+        { label: "Today's Collection", value: cashFlowStats.todayTotal, icon: TrendingUp, color: "text-green-600" },
+        { label: "This Week", value: cashFlowStats.weekTotal, icon: CalendarDays, color: "text-primary" },
+        { label: "This Month", value: cashFlowStats.monthTotal, icon: Scale, color: "text-primary" },
+        { label: "Filtered Students", value: filteredData.length, icon: Users, color: "text-muted-foreground" }
+    ];
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -720,21 +729,19 @@ export default function PaymentsManagementPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Today's Collection</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Week</CardTitle><CalendarDays className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">This Month</CardTitle><Scale className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card className="shadow-md border-primary/10">
-                <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-sm font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Student Population Audit</CardTitle></CardHeader>
-                <CardContent className="pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Intake</Label><Select value={countIntakeId} onValueChange={setCountIntakeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Programme</Label><Select value={countProgrammeId} onValueChange={setCountProgrammeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
+                        {cashFlowCards.map((c, i) => (
+                            <Card key={i} className="bg-card border-0 shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-[10px] font-black uppercase text-muted-foreground">{c.label}</CardTitle>
+                                    <c.icon className={cn("h-4 w-4", c.color)} />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className={cn("text-2xl font-black", c.color)}>
+                                        {typeof c.value === 'number' && i < 3 ? `ZMW ${c.value.toFixed(2)}` : c.value}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
                     </div>
                 </CardContent>
             </Card>
@@ -775,6 +782,17 @@ export default function PaymentsManagementPage() {
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                         <Button variant="outline" size="sm" className="h-9 font-bold" onClick={() => { setSearchTerm(''); setProgrammeFilter('all'); setIntakeFilter('all'); setSemesterFilter('current'); setBalanceStatusFilter('all'); }}>Reset</Button>
                     </div>
+
+                    <Card className="shadow-md border-primary/10 mb-6">
+                        <CardHeader className="bg-primary/5 py-3"><CardTitle className="text-xs font-bold flex items-center gap-2"><Users className="h-3.5 w-3.5 text-primary" /> Global Population Audit</CardTitle></CardHeader>
+                        <CardContent className="pt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Census Intake</Label><Select value={countIntakeId} onValueChange={setCountIntakeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Census Programme</Label><Select value={countProgrammeId} onValueChange={setCountProgrammeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     <div className="rounded-md border shadow-sm overflow-hidden">
                         <Table>
@@ -952,7 +970,7 @@ export default function PaymentsManagementPage() {
                 <DialogContent>
                     <DialogHeader><div className="flex items-center gap-2 text-primary mb-2"><PlusCircle className="h-5 w-5"/><DialogTitle className="text-xl font-headline uppercase">Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle></div><DialogDescription>Applying adjustment to <span className="font-black text-foreground">{adjustmentTarget?.studentName}'s</span> ledger.</DialogDescription></DialogHeader>
                     <div className="space-y-6 py-6 border-y border-dashed my-4"><div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary">Adjustment Amount (ZMW)</Label><div className="relative"><Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} className="h-14 text-2xl font-black bg-muted/20 border-primary/20 pl-10" /><span className="absolute left-4 top-1/2 -translate-y-1/2 font-black opacity-30 text-xl">K</span></div></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground">Audit Reason</Label><Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Required context..." rows={4} /></div></div>
-                    <DialogFooter><DialogClose asChild><Button variant="ghost">Discard</Button></DialogClose><Button onClick={handleSaveAllBulk} disabled={formLoading || !adjAmount || !adjReason.trim()}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}Post Adjustment</Button></DialogFooter>
+                    <DialogFooter><DialogClose asChild><Button variant="ghost">Discard</Button></DialogClose><Button onClick={handleSaveAllBulk} disabled={formLoading || !adjAmount || !adjReason.trim()}>{formLoading ? <Loader2 className="mr-2 h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}Post Adjustment</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -1005,7 +1023,7 @@ export default function PaymentsManagementPage() {
                             <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2"><History className="h-3 w-3" /> Transaction History</Label>
                             <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
                                 <Table>
-                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Reference</TableHead><TableHead className="h-8 text-[10px]">Method</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead></TableRow></TableHeader>
+                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Reference</TableHead><TableHead className="h-8 text-[10px]">Method</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead></TableHeader>
                                     <TableBody>
                                         {selectedDetail?.transactions.map((tx, i) => (
                                             <TableRow key={i}><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell><TableCell className="text-[10px] uppercase font-bold opacity-70">{tx.method || 'Online'}</TableCell><TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell></TableRow>

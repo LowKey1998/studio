@@ -70,15 +70,15 @@ export default function ScholarshipAssignmentsPage() {
                 setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
                 if (usersSnap.exists()) {
-                    const usersData = usersSnap.val();
-                    const list = Object.keys(usersData)
-                        .filter(uid => usersData[uid].role === 'Student')
+                    const data = usersSnap.val();
+                    const list = Object.keys(data)
+                        .filter(uid => data[uid].role === 'Student')
                         .map(uid => {
-                            const sId = usersData[uid].scholarshipId;
+                            const sId = data[uid].scholarshipId;
                             return {
                                 uid,
-                                ...usersData[uid],
-                                programmeName: progs[usersData[uid].programmeId]?.name || 'N/A',
+                                ...data[uid],
+                                programmeName: progs[data[uid].programmeId]?.name || 'N/A',
                                 scholarshipName: sId ? schols[sId]?.name : null,
                                 scholarshipPercentage: sId ? schols[sId]?.percentage : 0
                             };
@@ -103,7 +103,6 @@ export default function ScholarshipAssignmentsPage() {
                 [`users/${studentUid}/scholarshipId`]: scholId === 'none' ? null : scholId
             };
             
-            // Sync with active registrations and invoices
             const regsSnap = await get(ref(db, `registrations/${studentUid}`));
             if (regsSnap.exists()) {
                 const regs = regsSnap.val();

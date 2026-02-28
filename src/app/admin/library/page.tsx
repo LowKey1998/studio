@@ -102,12 +102,12 @@ export default function LibraryPage() {
         };
     }, [scanner]);
 
-    // Handle scanner initialization after DOM update
+    // Robust scanner initialization
     React.useEffect(() => {
         let qrScanner: Html5Qrcode | null = null;
 
-        if (isScannerActive && !scanner) {
-            const start = async () => {
+        if (isScannerActive) {
+            const timer = setTimeout(async () => {
                 const element = document.getElementById(SCANNER_ID);
                 if (!element) return;
 
@@ -124,17 +124,16 @@ export default function LibraryPage() {
                         () => {}
                     );
                 } catch (err) {
-                    console.error("Scanner failed to start:", err);
+                    console.error("Scanner failed:", err);
                     setIsScannerActive(false);
                 }
-            };
-            const timer = setTimeout(start, 300);
+            }, 300);
             return () => {
                 clearTimeout(timer);
                 if (qrScanner) qrScanner.stop().catch(() => {});
             };
         }
-    }, [isScannerActive, scanner]);
+    }, [isScannerActive]);
     
     const resetForm = () => {
         setTitle('');
@@ -234,13 +233,12 @@ export default function LibraryPage() {
             stream.getTracks().forEach(track => track.stop());
             setIsScannerActive(true);
         } catch (err) {
-            console.error(err);
             setHasCameraPermission(false);
             setIsScannerActive(false);
             toast({ 
                 variant: 'destructive', 
                 title: "Camera Access Denied", 
-                description: "Please enable camera permissions in your browser settings to use the ISBN scanner." 
+                description: "Please enable camera permissions in your browser settings." 
             });
         }
     };
@@ -276,11 +274,11 @@ export default function LibraryPage() {
 
             if (editingBook) {
                 await set(ref(db, `libraryBooks/${editingBook.id}`), bookData);
-                toast({ title: 'Book Updated', description: `${title} has been updated.` });
+                toast({ title: 'Book Updated' });
             } else {
                 const newBookRef = push(ref(db, 'libraryBooks'));
                 await set(newBookRef, bookData);
-                toast({ title: 'Book Added', description: `${title} has been added to the catalog.` });
+                toast({ title: 'Book Added' });
             }
             
             resetForm();
