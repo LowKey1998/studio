@@ -70,15 +70,15 @@ export default function ScholarshipAssignmentsPage() {
                 setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
                 if (usersSnap.exists()) {
-                    const data = usersSnap.val();
-                    const list = Object.keys(data)
-                        .filter(uid => data[uid].role === 'Student')
+                    const usersData = usersSnap.val();
+                    const list = Object.keys(usersData)
+                        .filter(uid => usersData[uid].role === 'Student')
                         .map(uid => {
-                            const sId = data[uid].scholarshipId;
+                            const sId = usersData[uid].scholarshipId;
                             return {
                                 uid,
-                                ...data[uid],
-                                programmeName: progs[data[uid].programmeId]?.name || 'N/A',
+                                ...usersData[uid],
+                                programmeName: progs[usersData[uid].programmeId]?.name || 'N/A',
                                 scholarshipName: sId ? schols[sId]?.name : null,
                                 scholarshipPercentage: sId ? schols[sId]?.percentage : 0
                             };

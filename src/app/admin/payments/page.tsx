@@ -598,6 +598,8 @@ export default function PaymentsManagementPage() {
         try {
             const updates: Record<string, any> = {};
             const now = new Date().toISOString();
+            let processCount = 0;
+
             for (const row of bulkPaymentRows) {
                 const amount = parseFloat(row.amount);
                 if (isNaN(amount) || amount <= 0) continue;
@@ -606,8 +608,8 @@ export default function PaymentsManagementPage() {
                     const reqRef = push(ref(db, 'studentCreationRequests'));
                     const txRef = push(ref(db, 'transactions'));
                     updates[`studentCreationRequests/${reqRef.key}`] = { 
-                        tempId: row.tempId || row.tempStudentId || null, 
-                        tempName: row.tempName || row.tempStudentName || null, 
+                        tempId: row.tempStudentId || null, 
+                        tempName: row.tempStudentName || null, 
                         targetSemesterId: row.semesterId || null, 
                         amountPaid: amount, 
                         status: 'pending', 
@@ -624,9 +626,10 @@ export default function PaymentsManagementPage() {
                         recordedBy: userData.name, 
                         isUnlinked: true, 
                         requestId: reqRef.key, 
-                        senderName: row.tempName || row.tempStudentName || null, 
-                        tempId: row.tempId || row.tempStudentId || null 
+                        senderName: row.tempStudentName || null, 
+                        tempId: row.tempStudentId || null 
                     };
+                    processCount++;
                 } else if (row.userId) {
                     const txRef = push(ref(db, 'transactions'));
                     updates[`transactions/${txRef.key}`] = { 
@@ -641,12 +644,18 @@ export default function PaymentsManagementPage() {
                         recordedBy: userData.name 
                     };
                     createNotification(row.userId, `Payment of ZMW ${amount.toFixed(2)} recorded for ${row.academicStanding}.`, '/student/payments').catch(() => {});
+                    processCount++;
                 }
             }
-            await update(ref(db), updates);
-            toast({ variant: 'success', title: 'Batch Processed' });
-            setIsBulkRecordOpen(false);
-            setBulkPaymentRows([]);
+
+            if (Object.keys(updates).length > 0) {
+                await update(ref(db), updates);
+                toast({ variant: 'success', title: 'Batch Processed', description: `Successfully recorded ${processCount} payment(s).` });
+                setIsBulkRecordOpen(false);
+                setBulkPaymentRows([]);
+            } else {
+                toast({ variant: 'destructive', title: 'Invalid Batch', description: 'No valid payments found in the form.' });
+            }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Error', description: e.message });
         } finally {
