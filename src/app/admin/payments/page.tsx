@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -347,7 +346,6 @@ export default function PaymentsManagementPage() {
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
             const userTransactions = transactionsList.filter(t => t.userId === userId);
-            let userCreditPool = [...userTransactions];
 
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
@@ -406,15 +404,9 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // Match transactions by invoiceId (including provisional matches if unlinked)
-                const matchedTransactions = userCreditPool.filter(t => t.invoiceId === reg.invoiceId && !!reg.invoiceId);
-                const matchedPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-                
-                // Unlinked credit pool fallback
-                const unlinkedMatches = userCreditPool.filter(t => !t.invoiceId);
-                const unlinkedPaid = unlinkedMatches.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-                
-                const totalPaid = matchedPaid + unlinkedPaid;
+                // Match transactions by invoiceId (including unlinked matches for that user)
+                const matchedTransactions = userTransactions.filter(t => t.invoiceId === reg.invoiceId || (!t.invoiceId && isProvisional));
+                const totalPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
                 
                 const threshold = semesterInfo.paymentThreshold || globalThreshold;
@@ -438,7 +430,7 @@ export default function PaymentsManagementPage() {
                     nextInstallmentDue,
                     breakdown: billingResults.breakdown,
                     isProvisional,
-                    transactions: [...matchedTransactions, ...unlinkedMatches]
+                    transactions: matchedTransactions
                 });
             }
         }

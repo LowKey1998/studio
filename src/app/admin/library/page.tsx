@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,6 +100,49 @@ export default function LibraryPage() {
         };
     }, [scanner]);
 
+    const stopScanner = React.useCallback(async () => {
+        if (scanner) {
+            try {
+                await scanner.stop();
+                setScanner(null);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                 setIsScannerActive(false);
+            }
+        }
+    }, [scanner]);
+
+    const fetchBookByIsbn = React.useCallback(async (isbn: string) => {
+        const cleanIsbn = isbn.replace(/\D/g, '');
+        if (!cleanIsbn) return;
+
+        setIsSearchingIsbn(true);
+        try {
+            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
+            const data = await response.json();
+            if (data.totalItems > 0) {
+                const item = data.items[0].volumeInfo;
+                setTitle(item.title || '');
+                setAuthor(item.authors ? item.authors.join(', ') : '');
+                setGenre(item.categories ? item.categories.join(', ') : '');
+                setYear(item.publishedDate ? item.publishedDate.split('-')[0] : '');
+                setBarcode(cleanIsbn);
+                if (item.imageLinks?.thumbnail) {
+                    setImageUrl(item.imageLinks.thumbnail.replace('http://', 'https://'));
+                }
+                toast({ title: "Book Found!", description: item.title });
+                if (isScannerActive) stopScanner();
+            } else {
+                toast({ variant: 'destructive', title: "Not Found", description: "No book found for this ISBN." });
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: "Search Error", description: "Could not fetch book metadata." });
+        } finally {
+            setIsSearchingIsbn(false);
+        }
+    }, [isScannerActive, stopScanner, toast]);
+
     // Robust scanner initialization
     React.useEffect(() => {
         let qrScanner: Html5Qrcode | null = null;
@@ -132,7 +174,7 @@ export default function LibraryPage() {
                 if (qrScanner) qrScanner.stop().catch(() => {});
             };
         }
-    }, [isScannerActive]);
+    }, [isScannerActive, fetchBookByIsbn]);
     
     const resetForm = () => {
         setTitle('');
@@ -148,49 +190,6 @@ export default function LibraryPage() {
         setHasCameraPermission(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
         if (isScannerActive) stopScanner();
-    };
-
-    const stopScanner = async () => {
-        if (scanner) {
-            try {
-                await scanner.stop();
-                setScanner(null);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                 setIsScannerActive(false);
-            }
-        }
-    };
-
-    const fetchBookByIsbn = async (isbn: string) => {
-        const cleanIsbn = isbn.replace(/\D/g, '');
-        if (!cleanIsbn) return;
-
-        setIsSearchingIsbn(true);
-        try {
-            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
-            const data = await response.json();
-            if (data.totalItems > 0) {
-                const item = data.items[0].volumeInfo;
-                setTitle(item.title || '');
-                setAuthor(item.authors ? item.authors.join(', ') : '');
-                setGenre(item.categories ? item.categories.join(', ') : '');
-                setYear(item.publishedDate ? item.publishedDate.split('-')[0] : '');
-                setBarcode(cleanIsbn);
-                if (item.imageLinks?.thumbnail) {
-                    setImageUrl(item.imageLinks.thumbnail.replace('http://', 'https://'));
-                }
-                toast({ title: "Book Found!", description: item.title });
-                if (isScannerActive) stopScanner();
-            } else {
-                toast({ variant: 'destructive', title: "Not Found", description: "No book found for this ISBN." });
-            }
-        } catch (e) {
-            toast({ variant: 'destructive', title: "Search Error", description: "Could not fetch book metadata." });
-        } finally {
-            setIsSearchingIsbn(false);
-        }
     };
 
     const startScanner = async () => {
