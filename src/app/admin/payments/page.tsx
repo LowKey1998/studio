@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -316,7 +315,10 @@ export default function PaymentsManagementPage() {
     }), []);
 
     const computeDerived = React.useCallback((store: any) => {
-        if (!store.users || !store.registrations || !store.semesters || !store.intakes) return;
+        if (!store.users || !store.registrations || !store.semesters || !store.intakes) {
+            if (store.users) setLoading(false);
+            return;
+        }
 
         const users = store.users;
         const regsData = store.registrations;
@@ -414,13 +416,9 @@ export default function PaymentsManagementPage() {
                 }
 
                 // Credit Attribution Logic:
-                // 1. Match by Invoice ID first
-                const directMatches = userPool.filter(t => t.invoiceId === reg.invoiceId);
-                // 2. Identify unallocated credits for this user (no invoice ID yet)
-                const unallocatedMatches = userPool.filter(t => !t.invoiceId);
-                
-                // For provisional records, we consider unallocated payments as applying to this record
-                const matchedTransactions = isProvisional ? [...directMatches, ...unallocatedMatches] : directMatches;
+                const matchedTransactions = reg.invoiceId 
+                    ? userPool.filter(t => t.invoiceId === reg.invoiceId)
+                    : isProvisional ? userPool.filter(t => !t.invoiceId) : [];
                 
                 const totalPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);

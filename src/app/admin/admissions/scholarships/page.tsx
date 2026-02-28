@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from 'react';
@@ -206,7 +205,7 @@ export default function ScholarshipAssignmentsPage() {
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Status</Label>
-                            <Select value={scholarshipFilter} onValueChange={setscholarshipFilter}>
+                            <Select value={scholarshipFilter} onValueChange={setScholarshipFilter}>
                                 <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Students</SelectItem>
