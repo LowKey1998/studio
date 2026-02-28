@@ -406,21 +406,14 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // ADVANCED CREDIT ALLOCATION LOGIC
-                // 1. Match by InvoiceId (Direct)
+                // Match transactions by invoiceId (including provisional matches if unlinked)
                 const matchedTransactions = userCreditPool.filter(t => t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const matchedPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 
-                // Remove matched from pool
-                userCreditPool = userCreditPool.filter(t => !matchedTransactions.includes(t));
-
-                // 2. Fallback: Take from pool if balance remains (FIFO distribution)
-                // For now, simpler: we'll match by invoiceId. 
-                // To truly fix "provisional not working", we must ensure unlinked deposits are included.
-                const unlinkedMatches = userCreditPool.filter(t => !t.invoiceId); // orphan payments
+                // Unlinked credit pool fallback
+                const unlinkedMatches = userCreditPool.filter(t => !t.invoiceId);
                 const unlinkedPaid = unlinkedMatches.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 
-                // Combine
                 const totalPaid = matchedPaid + unlinkedPaid;
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
                 
