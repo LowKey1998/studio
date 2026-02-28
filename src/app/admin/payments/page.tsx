@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -291,6 +292,12 @@ export default function PaymentsManagementPage() {
         return new Date(Date.now() + serverTimeOffset);
     }, [serverTimeOffset]);
 
+    React.useEffect(() => {
+        const offsetRef = ref(db, '.info/serverTimeOffset');
+        onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
+        return () => off(offsetRef);
+    }, []);
+
     const dataRefs = React.useMemo(() => ({
         users: ref(db, 'users'),
         registrations: ref(db, 'registrations'),
@@ -307,12 +314,6 @@ export default function PaymentsManagementPage() {
         configs: ref(db, 'semesterConfigs'),
         scholarships: ref(db, 'scholarships')
     }), []);
-
-    React.useEffect(() => {
-        const offsetRef = ref(db, '.info/serverTimeOffset');
-        onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
-        return () => off(offsetRef);
-    }, []);
 
     const computeDerived = React.useCallback((store: any) => {
         if (!store.users || !store.registrations || !store.semesters || !store.intakes) return;
@@ -331,10 +332,18 @@ export default function PaymentsManagementPage() {
         const now = getCurrentServerDate();
 
         const transactionsList: Transaction[] = [];
+        const studentCredits: Record<string, Transaction[]> = {};
+
         for (const txId in txsData) {
             const tx = txsData[txId];
             if(tx.status !== 'successful') continue;
-            transactionsList.push({ key: txId, ...tx });
+            const txObj = { key: txId, ...tx };
+            transactionsList.push(txObj);
+            
+            if (tx.userId) {
+                if (!studentCredits[tx.userId]) studentCredits[tx.userId] = [];
+                studentCredits[tx.userId].push(txObj);
+            }
         }
         setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
@@ -345,7 +354,7 @@ export default function PaymentsManagementPage() {
             const profile = users[userId];
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
-            const userTransactions = transactionsList.filter(t => t.userId === userId);
+            const userPool = [...(studentCredits[userId] || [])];
 
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
@@ -404,8 +413,15 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // Match transactions by invoiceId (including unlinked matches for that user)
-                const matchedTransactions = userTransactions.filter(t => t.invoiceId === reg.invoiceId || (!t.invoiceId && isProvisional));
+                // Credit Attribution Logic:
+                // 1. Match by Invoice ID first
+                const directMatches = userPool.filter(t => t.invoiceId === reg.invoiceId);
+                // 2. Identify unallocated credits for this user (no invoice ID yet)
+                const unallocatedMatches = userPool.filter(t => !t.invoiceId);
+                
+                // For provisional records, we consider unallocated payments as applying to this record
+                const matchedTransactions = isProvisional ? [...directMatches, ...unallocatedMatches] : directMatches;
+                
                 const totalPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
                 
@@ -435,6 +451,10 @@ export default function PaymentsManagementPage() {
             }
         }
 
+        const studs: StudentInfo[] = [];
+        for(const uid in users) { if(users[uid].role === 'Student') studs.push({ uid, ...users[uid] }); }
+        setAllStudents(studs.sort((a,b) => a.name.localeCompare(b.name)));
+        setAllUsers(users);
         setPaymentInfos(Array.from(studentPaymentMap.values()));
         setLoading(false);
     }, [getCurrentServerDate]);
@@ -536,53 +556,23 @@ export default function PaymentsManagementPage() {
                     const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
                     updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
-                    if (!updatedRow.semesterId) {
-                        const latestSemester = studentIntakeSemesters.sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear)[0];
-                        if (latestSemester) {
-                            updatedRow.semesterId = latestSemester.id;
-                            updatedRow.year = String(latestSemester.year);
-                            updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
-                            updateDerivedFields(value, latestSemester.id);
-                        }
-                    } else {
-                        updateDerivedFields(value, updatedRow.semesterId);
+                    const latestSemester = studentIntakeSemesters.sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear)[0];
+                    if (latestSemester) {
+                        updatedRow.semesterId = latestSemester.id;
+                        updatedRow.year = String(latestSemester.year);
+                        updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
+                        updateDerivedFields(value, latestSemester.id);
                     }
                 }
 
                 if (field === 'isNewStudent') {
-                    updatedRow.userId = undefined;
-                    updatedRow.tempStudentId = '';
-                    updatedRow.tempStudentName = '';
-                    updatedRow.year = '';
-                    updatedRow.semesterId = '';
+                    updatedRow.userId = undefined; updatedRow.tempStudentId = ''; updatedRow.tempStudentName = ''; updatedRow.year = ''; updatedRow.semesterId = '';
                     const maxYear = Math.max(...semesters.map(s => s.year), 1);
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
                 if (field === 'semesterId') {
                     updateDerivedFields(updatedRow.userId || '', value);
-                }
-
-                if (field === 'amount' || field === 'userId' || field === 'semesterId' || field === 'allocations') {
-                    if (updatedRow.breakdown && field !== 'allocations') {
-                        const amountVal = parseFloat(field === 'amount' ? value : updatedRow.amount) || 0;
-                        const cumulativePaid = (updatedRow.totalPaid || 0) + amountVal;
-                        let rem = cumulativePaid;
-                        const autoAllocations: string[] = [];
-                        if (updatedRow.breakdown.mandatoryItems) {
-                            for (const f of updatedRow.breakdown.mandatoryItems) {
-                                if (rem >= f.amount) { autoAllocations.push(f.name); rem -= f.amount; }
-                            }
-                        }
-                        if (updatedRow.breakdown.optionalItems) {
-                            for (const f of updatedRow.breakdown.optionalItems) {
-                                if (rem >= f.amount) { autoAllocations.push(f.name); rem -= f.amount; }
-                            }
-                        }
-                        const netTuition = (updatedRow.breakdown.tuition || 0) - (updatedRow.breakdown.scholarship || 0);
-                        if (rem >= netTuition && netTuition > 0) autoAllocations.push('Tuition');
-                        updatedRow.allocations = autoAllocations;
-                    }
                 }
 
                 return updatedRow;
@@ -606,42 +596,12 @@ export default function PaymentsManagementPage() {
                 if (row.isNewStudent) {
                     const reqRef = push(ref(db, 'studentCreationRequests'));
                     const txRef = push(ref(db, 'transactions'));
-                    updates[`studentCreationRequests/${reqRef.key}`] = { 
-                        tempId: row.tempStudentId || null, 
-                        tempName: row.tempStudentName || null, 
-                        targetSemesterId: row.semesterId || null, 
-                        amountPaid: amount, 
-                        status: 'pending', 
-                        timestamp: Date.now() 
-                    };
-                    updates[`transactions/${txRef.key}`] = { 
-                        transactionId: `DEP-${Date.now()}`, 
-                        userId: 'unlinked', 
-                        amount, 
-                        paymentDate: now, 
-                        status: 'successful', 
-                        method: 'Cash/Direct', 
-                        purpose: row.allocations.join(', ') || 'Initial Deposit', 
-                        recordedBy: userData.name, 
-                        isUnlinked: true, 
-                        requestId: reqRef.key, 
-                        senderName: row.tempStudentName || null, 
-                        tempId: row.tempStudentId || null 
-                    };
+                    updates[`studentCreationRequests/${reqRef.key}`] = { tempId: row.tempStudentId || null, tempName: row.tempStudentName || null, targetSemesterId: row.semesterId || null, amountPaid: amount, status: 'pending', timestamp: Date.now() };
+                    updates[`transactions/${txRef.key}`] = { transactionId: `DEP-${Date.now()}`, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash/Direct', purpose: row.allocations.join(', ') || 'Initial Deposit', recordedBy: userData.name, isUnlinked: true, requestId: reqRef.key, senderName: row.tempStudentName || null, tempId: row.tempStudentId || null };
                     processCount++;
                 } else if (row.userId) {
                     const txRef = push(ref(db, 'transactions'));
-                    updates[`transactions/${txRef.key}`] = { 
-                        transactionId: `CASH-${Date.now()}`, 
-                        userId: row.userId, 
-                        invoiceId: row.invoiceId || null, 
-                        amount, 
-                        paymentDate: now, 
-                        status: 'successful', 
-                        method: 'Cash/Direct', 
-                        purpose: row.allocations.join(', ') || 'Fees Payment', 
-                        recordedBy: userData.name 
-                    };
+                    updates[`transactions/${txRef.key}`] = { transactionId: `CASH-${Date.now()}`, userId: row.userId, invoiceId: row.invoiceId || null, amount, paymentDate: now, status: 'successful', method: 'Cash/Direct', purpose: row.allocations.join(', ') || 'Fees Payment', recordedBy: userData.name };
                     createNotification(row.userId, `Payment of ZMW ${amount.toFixed(2)} recorded for ${row.academicStanding}.`, '/student/payments').catch(() => {});
                     processCount++;
                 }
@@ -650,16 +610,12 @@ export default function PaymentsManagementPage() {
             if (Object.keys(updates).length > 0) {
                 await update(ref(db), updates);
                 toast({ variant: 'success', title: 'Batch Processed', description: `Successfully recorded ${processCount} payment(s).` });
-                setIsBulkRecordOpen(false);
-                setBulkPaymentRows([]);
+                setIsBulkRecordOpen(false); setBulkPaymentRows([]);
             } else {
                 toast({ variant: 'destructive', title: 'Invalid Batch', description: 'No valid payments found in the form.' });
             }
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Error', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Error', description: e.message }); }
+        finally { setFormLoading(false); }
     };
 
     const studentOptions: OptionGroup[] = React.useMemo(() => {
