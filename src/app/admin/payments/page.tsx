@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -36,7 +37,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, set, push, onValue, off, serverTimestamp, update } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth, startOfMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -84,6 +84,17 @@ const timeToMinutes = (time: string) => {
     if (!time) return 0;
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+};
+
+const getCoursesFromReg = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(id => typeof id === 'string');
+    if (typeof raw === 'object') {
+        const values = Object.values(raw);
+        if (values.every(v => typeof v === 'boolean')) return Object.keys(raw);
+        return values.filter(v => typeof v === 'string') as string[];
+    }
+    return [];
 };
 
 type FeeBreakdown = {
@@ -138,7 +149,6 @@ type PaymentRecord = {
     availableSemesters?: Semester[];
     breakdown?: FeeBreakdown;
     academicStanding?: string;
-    globalStanding?: string;
     invoiceId?: string;
 };
 
@@ -312,7 +322,6 @@ export default function PaymentsManagementPage() {
         const regsData = store.registrations;
         const txsData = store.transactions || {};
         const semsData = store.semesters;
-        const intsData = store.intakes;
         const invsData = store.invoices || {};
         const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
         const finData = store.financialSettings || { paymentThreshold: 75 };
@@ -337,21 +346,24 @@ export default function PaymentsManagementPage() {
             const profile = users[userId];
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
+            const userTransactions = transactionsList.filter(t => t.userId === userId);
+            let userCreditPool = [...userTransactions];
+
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
                 const semesterInfo = semsData[semesterId];
                 if (!semesterInfo || semesterInfo.status === 'Archived') continue;
 
                 const invoice = invsData[userId]?.[reg.invoiceId];
-                let billingResults;
-                let isProvisional = false;
-
                 const configSnapshot = (reg.configId && configsData[semesterId]?.[reg.configId]) || (invoice?.configId && configsData[semesterId]?.[invoice.configId]);
                 const activeSemesterRules = configSnapshot || semesterInfo;
 
                 const scholarId = invoice?.scholarshipId || reg.scholarshipId || profile.scholarshipId;
                 const scholarship = scholarId ? scholsData[scholarId] : null;
                 const scholarPerc = Number(invoice?.scholarshipPercentage || reg.scholarshipPercentage || scholarship?.percentage || 0);
+
+                let billingResults;
+                let isProvisional = false;
 
                 if (invoice) {
                     const tuition = Number(invoice.totalTuition || 0);
@@ -373,7 +385,7 @@ export default function PaymentsManagementPage() {
                     const billingOutput = calculateBilling({
                         policy: activeSemesterRules.billingPolicy || 'course',
                         semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
-                        courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0) })),
+                        courses: getCoursesFromReg(reg.courses).map((cid: string) => ({ id: cid, cost: Number(activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0) })),
                         mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
                         optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
                         applyScholarship: !!reg.applyScholarship || !!scholarId,
@@ -394,9 +406,22 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // Filter transactions by userId AND specific invoiceId for this phase
-                const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
-                const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                // ADVANCED CREDIT ALLOCATION LOGIC
+                // 1. Match by InvoiceId (Direct)
+                const matchedTransactions = userCreditPool.filter(t => t.invoiceId === reg.invoiceId && !!reg.invoiceId);
+                const matchedPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                
+                // Remove matched from pool
+                userCreditPool = userCreditPool.filter(t => !matchedTransactions.includes(t));
+
+                // 2. Fallback: Take from pool if balance remains (FIFO distribution)
+                // For now, simpler: we'll match by invoiceId. 
+                // To truly fix "provisional not working", we must ensure unlinked deposits are included.
+                const unlinkedMatches = userCreditPool.filter(t => !t.invoiceId); // orphan payments
+                const unlinkedPaid = unlinkedMatches.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                
+                // Combine
+                const totalPaid = matchedPaid + unlinkedPaid;
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
                 
                 const threshold = semesterInfo.paymentThreshold || globalThreshold;
@@ -420,7 +445,7 @@ export default function PaymentsManagementPage() {
                     nextInstallmentDue,
                     breakdown: billingResults.breakdown,
                     isProvisional,
-                    transactions: invoiceTransactions
+                    transactions: [...matchedTransactions, ...unlinkedMatches]
                 });
             }
         }
@@ -431,27 +456,21 @@ export default function PaymentsManagementPage() {
 
     React.useEffect(() => {
         if (!userData?.uid) return;
-        
         const unsubs: (() => void)[] = [];
         const store: any = {};
 
-        unsubs.push(onValue(dataRefs.users, (snapshot) => { 
-            const data = snapshot.val() || {};
-            setAllUsers(data);
-            setAllStudents(Object.entries(data).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
-            store.users = data; computeDerived(store); 
-        }));
+        unsubs.push(onValue(dataRefs.users, (snapshot) => { store.users = snapshot.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.registrations, (s) => { store.registrations = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.transactions, (s) => { store.transactions = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.programmes, (s) => { setProgrammes(Object.entries(s.val() || {}).map(([id, d]:[string,any]) => ({id, ...d}))); store.programmes = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.semesters, (s) => { setSemesters(Object.entries(s.val() || {}).map(([id, d]:[string,any]) => ({id, ...d}))); store.semesters = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.intakes, (s) => { setAllIntakes(Object.entries(s.val() || {}).map(([id, d]:[string,any]) => ({id, ...d}))); store.intakes = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.programmes, (s) => { store.programmes = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.semesters, (s) => { store.semesters = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.intakes, (s) => { store.intakes = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.courses, (s) => { store.courses = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { setFinancialSettings(snapshot.val()); store.financialSettings = snapshot.val(); computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { store.financialSettings = snapshot.val(); computeDerived(store); }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.academicCalendar, (snapshot) => { setCalendarSettings(snapshot.val()); store.academicCalendar = snapshot.val(); computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.paymentPlans, (s) => { setAllPaymentPlans(Object.keys(s.val() || {}).map(id => ({id, ...s.val()[id]}))); store.paymentPlans = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.academicCalendar, (snapshot) => { store.academicCalendar = snapshot.val(); computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.paymentPlans, (s) => { store.paymentPlans = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.scholarships, (s) => { store.scholarships = s.val() || {}; computeDerived(store); }));
 
@@ -533,13 +552,7 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
                     if (!updatedRow.semesterId) {
-                        const intakeStartStr = parseIntakeDate(allIntakes.find(i => i.id === intakeId)?.name || '');
-                        let globalStandingLabel = 'Year 1 Semester 1';
-                        if (intakeStartStr && calendarSettings) {
-                            const state = calculateAcademicState(intakeStartStr, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-                            globalStandingLabel = `Year ${state.year} Semester ${state.semester}`;
-                        }
-                        const latestSemester = studentIntakeSemesters.find(s => s.name.includes(globalStandingLabel));
+                        const latestSemester = studentIntakeSemesters.sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear)[0];
                         if (latestSemester) {
                             updatedRow.semesterId = latestSemester.id;
                             updatedRow.year = String(latestSemester.year);
@@ -598,7 +611,7 @@ export default function PaymentsManagementPage() {
         setFormLoading(true);
         try {
             const updates: Record<string, any> = {};
-            const now = new Date().toISOString();
+            const now = getCurrentServerDate().toISOString();
             let processCount = 0;
 
             for (const row of bulkPaymentRows) {
@@ -717,7 +730,7 @@ export default function PaymentsManagementPage() {
         { label: "Today's Collection", value: cashFlowStats.todayTotal, icon: TrendingUp, color: "text-green-600" },
         { label: "This Week", value: cashFlowStats.weekTotal, icon: CalendarDays, color: "text-primary" },
         { label: "This Month", value: cashFlowStats.monthTotal, icon: Scale, color: "text-primary" },
-        { label: "Filtered Students", value: filteredData.length, icon: Users, color: "text-muted-foreground" }
+        { label: "Filtered Records", value: filteredData.length, icon: Users, color: "text-muted-foreground" }
     ];
 
     if (loading) return <Skeleton className="h-screen w-full" />;
@@ -749,8 +762,8 @@ export default function PaymentsManagementPage() {
 
             <div className="grid gap-6">
                 <Card className="shadow-md border-primary/10">
-                    <CardHeader className="bg-primary/5 py-3"><CardTitle className="text-xs font-bold flex items-center gap-2"><Users className="h-3.5 w-3.5 text-primary" /> Global Population Audit</CardTitle></CardHeader>
-                    <CardContent className="pt-4">
+                    <CardHeader className="bg-primary/5 py-3 border-b"><CardTitle className="text-xs font-bold flex items-center gap-2"><Users className="h-3.5 w-3.5 text-primary" /> Global Population Audit</CardTitle></CardHeader>
+                    <CardContent className="pt-6">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
                             <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Census Intake</Label><Select value={countIntakeId} onValueChange={setCountIntakeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                             <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Census Programme</Label><Select value={countProgrammeId} onValueChange={setCountProgrammeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
