@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -164,38 +163,6 @@ export default function LibraryPage() {
         }
     };
 
-    const handleOpenDialog = (book: Book | null = null) => {
-        if (book) {
-            setEditingBook(book);
-            setTitle(book.title);
-            setAuthor(book.author);
-            setGenre(book.genre);
-            setBarcode(book.barcode || '');
-            setYear(String(book.year || ''));
-            setCount(String(book.count || ''));
-            setImageUrl(book.image);
-        } else {
-            resetForm();
-        }
-        setIsDialogOpen(true);
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0] || null;
-        if(file && file.size > 5 * 1024 * 1024) {
-            toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 5MB.' });
-            return;
-        }
-        setImageFile(file);
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImageUrl(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
     const fetchBookByIsbn = async (isbn: string) => {
         const cleanIsbn = isbn.replace(/\D/g, '');
         if (!cleanIsbn) return;
@@ -304,6 +271,38 @@ export default function LibraryPage() {
             toast({ variant: 'destructive', title: 'Delete Failed', description: e.message });
         } finally {
             setFormLoading(false);
+        }
+    };
+
+    const handleOpenDialog = (book: Book | null = null) => {
+        if (book) {
+            setEditingBook(book);
+            setTitle(book.title);
+            setAuthor(book.author);
+            setGenre(book.genre);
+            setBarcode(book.barcode || '');
+            setYear(String(book.year || ''));
+            setCount(String(book.count || ''));
+            setImageUrl(book.image);
+        } else {
+            resetForm();
+        }
+        setIsDialogOpen(true);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        if(file && file.size > 5 * 1024 * 1024) {
+            toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 5MB.' });
+            return;
+        }
+        setImageFile(file);
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImageUrl(reader.result as string);
+            };
+            reader.readAsDataURL(file);
         }
     };
 

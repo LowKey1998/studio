@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -395,7 +394,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // IMPORTANT: Filter transactions STRICTLY by user AND the specific invoice ID for this phase
+                // Filter transactions by userId AND specific invoiceId for this phase
                 const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId && !!reg.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -721,6 +720,8 @@ export default function PaymentsManagementPage() {
         { label: "Filtered Students", value: filteredData.length, icon: Users, color: "text-muted-foreground" }
     ];
 
+    if (loading) return <Skeleton className="h-screen w-full" />;
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -746,116 +747,118 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            <Card className="shadow-md">
-                <CardHeader className="border-b">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div><CardTitle>Receivables Ledger</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
-                        <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
-                    </div>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
-                            <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Semesters</SelectItem>
-                                    <SelectItem value="current" className="font-bold text-primary">Current Academic Phase</SelectItem>
-                                    <Separator className="my-1"/>
-                                    {semesters.filter(s => intakeFilter === 'all' || s.intakeId === intakeFilter).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+            <div className="grid gap-6">
+                <Card className="shadow-md border-primary/10">
+                    <CardHeader className="bg-primary/5 py-3"><CardTitle className="text-xs font-bold flex items-center gap-2"><Users className="h-3.5 w-3.5 text-primary" /> Global Population Audit</CardTitle></CardHeader>
+                    <CardContent className="pt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Census Intake</Label><Select value={countIntakeId} onValueChange={setCountIntakeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Census Programme</Label><Select value={countProgrammeId} onValueChange={setCountProgrammeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
                         </div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Payment Status</Label>
-                            <Select value={balanceStatusFilter} onValueChange={setBalanceStatusFilter}>
-                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Balances</SelectItem>
-                                    <SelectItem value="cleared" className="text-green-600 font-bold">Cleared (ZMW 0)</SelectItem>
-                                    <SelectItem value="owing" className="text-destructive font-bold">Owing (Any)</SelectItem>
-                                    <SelectItem value="at-risk" className="text-orange-600">Below Threshold</SelectItem>
-                                    <SelectItem value="overdue" className="text-red-600">Past Deadline</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
-                        <Button variant="outline" size="sm" className="h-9 font-bold" onClick={() => { setSearchTerm(''); setProgrammeFilter('all'); setIntakeFilter('all'); setSemesterFilter('current'); setBalanceStatusFilter('all'); }}>Reset</Button>
-                    </div>
+                    </CardContent>
+                </Card>
 
-                    <Card className="shadow-md border-primary/10 mb-6">
-                        <CardHeader className="bg-primary/5 py-3"><CardTitle className="text-xs font-bold flex items-center gap-2"><Users className="h-3.5 w-3.5 text-primary" /> Global Population Audit</CardTitle></CardHeader>
-                        <CardContent className="pt-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                                <div className="space-y-1"><Label className="text-[10px] font-black uppercase opacity-60">Census Intake</Label><Select value={countIntakeId} onValueChange={setCountIntakeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label className="text-[10px] uppercase font-black opacity-60">Census Programme</Label><Select value={countProgrammeId} onValueChange={setCountProgrammeId}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="text-center p-2 bg-muted/20 rounded-xl border border-dashed"><span className="block text-2xl font-black text-primary">{calculatedStudentCount}</span><span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Registered Students</span></div>
+                <Card className="shadow-md">
+                    <CardHeader className="border-b">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div><CardTitle>Receivables Ledger</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
+                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
+                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
+                                <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+                                    <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Semesters</SelectItem>
+                                        <SelectItem value="current" className="font-bold text-primary">Current Academic Phase</SelectItem>
+                                        <Separator className="my-1"/>
+                                        {semesters.filter(s => intakeFilter === 'all' || s.intakeId === intakeFilter).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                        </CardContent>
-                    </Card>
+                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Payment Status</Label>
+                                <Select value={balanceStatusFilter} onValueChange={setBalanceStatusFilter}>
+                                    <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Balances</SelectItem>
+                                        <SelectItem value="cleared" className="text-green-600 font-bold">Cleared (ZMW 0)</SelectItem>
+                                        <SelectItem value="owing" className="text-destructive font-bold">Owing (Any)</SelectItem>
+                                        <SelectItem value="at-risk" className="text-orange-600">Below Threshold</SelectItem>
+                                        <SelectItem value="overdue" className="text-red-600">Past Deadline</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
+                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={() => { setSearchTerm(''); setProgrammeFilter('all'); setIntakeFilter('all'); setSemesterFilter('current'); setBalanceStatusFilter('all'); }}>Reset</Button>
+                        </div>
 
-                    <div className="rounded-md border shadow-sm overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-muted/50">
-                                    <TableHead>System ID</TableHead>
-                                    <TableHead className="min-w-[250px]">User & Plan</TableHead>
-                                    <TableHead className="text-right">Balance</TableHead>
-                                    <TableHead className="text-right">Paid</TableHead>
-                                    <TableHead className="text-center min-w-[160px]">Standing</TableHead>
-                                    <TableHead className="w-[120px] text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredData.map((info) => (
-                                    <TableRow key={`${info.userId}-${info.semesterId}`} className={cn("group hover:bg-muted/30 transition-colors", info.isProvisional && "bg-orange-50/20")}>
-                                        <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col gap-1 py-1">
-                                                <span className="font-bold text-sm leading-tight">{info.studentName}</span>
-                                                <div className="flex flex-wrap items-center gap-1.5">
-                                                    {info.paymentPlanName ? <Badge variant="outline" className="h-4 text-[8px] uppercase border-primary/20 bg-primary/5">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
-                                                    <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate">{info.semesterName}</span>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex flex-col items-end">
-                                                <span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>
-                                                {info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
-                                        <TableCell className="text-center">
-                                            <div className="flex flex-col items-center cursor-pointer hover:scale-105 transition-transform" onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}>
-                                                {info.balance <= 0.01 ? <Badge className="bg-green-600 text-[8px] font-black">Cleared</Badge> : info.thresholdMet ? <Badge variant="secondary" className="bg-primary/10 text-primary text-[8px] font-black">Good Standing</Badge> : <Badge variant="destructive" className="text-[8px] font-black animate-pulse">Below Threshold</Badge>}
-                                                {info.nextInstallmentDue && <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <Button size="sm" variant="ghost" className="h-8 text-primary font-bold hover:bg-primary/10" onClick={() => handleRowPay(info)}>
-                                                    <Wallet className="h-3 w-3 mr-1.5"/> Pay
-                                                </Button>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-48">
-                                                        <DropdownMenuLabel>User Actions</DropdownMenuLabel>
-                                                        <DropdownMenuItem onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}><Info className="mr-2 h-4 w-4"/>Financial Audit</DropdownMenuItem>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit</DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4"/>Issue Debit</DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </div>
-                                        </TableCell>
+                        <div className="rounded-md border shadow-sm overflow-hidden">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead>System ID</TableHead>
+                                        <TableHead className="min-w-[250px]">User & Plan</TableHead>
+                                        <TableHead className="text-right">Balance</TableHead>
+                                        <TableHead className="text-right">Paid</TableHead>
+                                        <TableHead className="text-center min-w-[160px]">Standing</TableHead>
+                                        <TableHead className="w-[120px] text-right">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </CardContent>
-            </Card>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredData.map((info) => (
+                                        <TableRow key={`${info.userId}-${info.semesterId}`} className={cn("group hover:bg-muted/30 transition-colors", info.isProvisional && "bg-orange-50/20")}>
+                                            <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col gap-1 py-1">
+                                                    <span className="font-bold text-sm leading-tight">{info.studentName}</span>
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        {info.paymentPlanName ? <Badge variant="outline" className="h-4 text-[8px] uppercase border-primary/20 bg-primary/5">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
+                                                        <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate">{info.semesterName}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex flex-col items-end">
+                                                    <span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>
+                                                    {info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
+                                            <TableCell className="text-center">
+                                                <div className="flex flex-col items-center cursor-pointer hover:scale-105 transition-transform" onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}>
+                                                    {info.balance <= 0.01 ? <Badge className="bg-green-600 text-[8px] font-black">Cleared</Badge> : info.thresholdMet ? <Badge variant="secondary" className="bg-primary/10 text-primary text-[8px] font-black">Good Standing</Badge> : <Badge variant="destructive" className="text-[8px] font-black animate-pulse">Below Threshold</Badge>}
+                                                    {info.nextInstallmentDue && <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button size="sm" variant="ghost" className="h-8 text-primary font-bold hover:bg-primary/10" onClick={() => handleRowPay(info)}>
+                                                        <Wallet className="h-3 w-3 mr-1.5"/> Pay
+                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-48">
+                                                            <DropdownMenuLabel>User Actions</DropdownMenuLabel>
+                                                            <DropdownMenuItem onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}><Info className="mr-2 h-4 w-4"/>Financial Audit</DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4"/>Issue Debit</DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
 
             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
@@ -878,8 +881,7 @@ export default function PaymentsManagementPage() {
                                             <div className="space-y-2">
                                                 <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student..." />
                                                 <div className="flex flex-wrap gap-2">
-                                                    {row.globalStanding && <Badge variant="secondary" className="text-[9px] uppercase font-bold bg-primary/5 text-primary border-primary/10">Live Profile: {row.globalStanding}</Badge>}
-                                                    {row.academicStanding && row.academicStanding !== row.globalStanding && <Badge variant="outline" className="text-[9px] uppercase font-bold bg-orange-50 text-orange-700 border-orange-200">Record Selected: {row.academicStanding}</Badge>}
+                                                    {row.academicStanding && <Badge variant="outline" className="text-[9px] uppercase font-bold bg-orange-50 text-orange-700 border-orange-200">Record Selected: {row.academicStanding}</Badge>}
                                                 </div>
                                             </div>
                                         )}
@@ -1023,7 +1025,7 @@ export default function PaymentsManagementPage() {
                             <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2"><History className="h-3 w-3" /> Transaction History</Label>
                             <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
                                 <Table>
-                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Reference</TableHead><TableHead className="h-8 text-[10px]">Method</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead></TableHeader>
+                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Reference</TableHead><TableHead className="h-8 text-[10px]">Method</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {selectedDetail?.transactions.map((tx, i) => (
                                             <TableRow key={i}><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell><TableCell className="text-[10px] uppercase font-bold opacity-70">{tx.method || 'Online'}</TableCell><TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell></TableRow>
