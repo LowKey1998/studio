@@ -24,7 +24,10 @@ import {
     Receipt,
     AlertTriangle,
     CheckCircle2,
-    Save
+    Save,
+    Trash2,
+    ClipboardCheck,
+    ArrowRight
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -250,6 +253,8 @@ export default function PaymentsManagementPage() {
     const [semesterFilter, setSemesterFilter] = React.useState('current');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [balanceStatusFilter, setBalanceStatusFilter] = React.useState('all');
+    const [minBalance, setMinBalance] = React.useState('');
+    const [maxBalance, setMaxBalance] = React.useState('');
 
     const [isDetailOpen, setIsDetailOpen] = React.useState(false);
     const [selectedDetail, setSelectedDetail] = React.useState<StudentPaymentInfo | null>(null);
@@ -257,6 +262,14 @@ export default function PaymentsManagementPage() {
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
     
+    const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = React.useState(false);
+    const [adjustStudentId, setAdjustStudentId] = React.useState('');
+    const [adjustType, setAdjustType] = React.useState<'invoice' | 'transaction'>('invoice');
+    const [adjustTargetId, setAdjustTargetId] = React.useState('');
+    const [adjustOldValue, setAdjustOldValue] = React.useState(0);
+    const [adjustNewValue, setAdjustNewValue] = React.useState('');
+    const [adjustReason, setAdjustReason] = React.useState('');
+
     const [formLoading, setFormLoading] = React.useState(false);
 
     const { toast } = useToast();
@@ -467,9 +480,14 @@ export default function PaymentsManagementPage() {
             else if (balanceStatusFilter === 'at-risk') balanceMatch = !p.thresholdMet;
             else if (balanceStatusFilter === 'overdue') balanceMatch = !!(p.nextInstallmentDue && isBefore(parseISO(p.nextInstallmentDue), now));
             
+            const minB = parseFloat(minBalance);
+            const maxB = parseFloat(maxBalance);
+            if (!isNaN(minB) && p.balance < minB) balanceMatch = false;
+            if (!isNaN(maxB) && p.balance > maxB) balanceMatch = false;
+
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && balanceMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, getCurrentServerDate]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, minBalance, maxBalance, getCurrentServerDate]);
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -554,6 +572,36 @@ export default function PaymentsManagementPage() {
         finally { setFormLoading(false); }
     };
 
+    const handleCreateAdjustment = async () => {
+        if (!adjustStudentId || !adjustTargetId || !adjustNewValue || !adjustReason) {
+            toast({ variant: 'destructive', title: 'Fields Required' }); return;
+        }
+        setFormLoading(true);
+        try {
+            const student = allUsers[adjustStudentId];
+            const requestRef = push(ref(db, 'paymentEditRequests'));
+            await set(requestRef, {
+                type: adjustType,
+                targetId: adjustTargetId,
+                userId: adjustStudentId,
+                studentName: student.name,
+                studentId: student.id,
+                oldValue: adjustOldValue,
+                newValue: parseFloat(adjustNewValue),
+                reason: adjustReason,
+                requestedBy: userData?.name || 'Staff',
+                requestedByUid: user?.uid,
+                timestamp: Date.now(),
+                status: 'pending'
+            });
+            toast({ title: 'Adjustment Proposed', description: 'Pending Audit Review.' });
+            setIsAdjustmentDialogOpen(false);
+            setAdjustStudentId(''); setAdjustTargetId(''); setAdjustReason(''); setAdjustNewValue('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed' });
+        } finally { setFormLoading(false); }
+    };
+
     const studentOptions: OptionGroup[] = React.useMemo(() => {
         const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
         return [{ groupName: 'Student Roster', items }];
@@ -602,6 +650,8 @@ export default function PaymentsManagementPage() {
         { label: "Filtered Records", value: filteredData.length, icon: Users, color: "text-muted-foreground" }
     ];
 
+    if (loading) return <Skeleton className="h-screen w-full" />;
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -629,9 +679,15 @@ export default function PaymentsManagementPage() {
 
             <Card className="shadow-md">
                 <CardHeader className="border-b bg-muted/5 py-3">
-                    <CardTitle className="text-xs font-bold flex items-center gap-2">
-                        <Users className="h-3.5 w-3.5 text-primary" /> Population & Census Audit
-                    </CardTitle>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <CardTitle className="text-xs font-bold flex items-center gap-2">
+                            <Users className="h-3.5 w-3.5 text-primary" /> Population & Census Audit
+                        </CardTitle>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setIsAdjustmentDialogOpen(true)}><Scale className="mr-2 h-4 w-4"/> Proposed Adjustments</Button>
+                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
                     <div className="grid grid-cols-2 gap-4">
@@ -647,10 +703,7 @@ export default function PaymentsManagementPage() {
 
             <Card className="shadow-md">
                 <CardHeader className="border-b">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div><CardTitle>Receivables Ledger</CardTitle><CardDescription>Audit student financial compliance.</CardDescription></div>
-                        <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
-                    </div>
+                    <div><CardTitle>Receivables Ledger</CardTitle><CardDescription>Audit student financial compliance.</CardDescription></div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
@@ -677,8 +730,13 @@ export default function PaymentsManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Amount Range (ZMW)</Label>
+                            <div className="flex gap-2">
+                                <Input placeholder="Min" className="h-9 text-xs" value={minBalance} onChange={e => setMinBalance(e.target.value)}/>
+                                <Input placeholder="Max" className="h-9 text-xs" value={maxBalance} onChange={e => setMaxBalance(e.target.value)}/>
+                            </div>
+                        </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
-                        <Button variant="outline" size="sm" className="h-9 font-bold" onClick={() => { setSearchTerm(''); setProgrammeFilter('all'); setIntakeFilter('all'); setSemesterFilter('current'); setBalanceStatusFilter('all'); }}>Reset</Button>
                     </div>
 
                     <div className="rounded-md border shadow-sm overflow-hidden">
@@ -843,6 +901,82 @@ export default function PaymentsManagementPage() {
                         </section>
                     </div>
                     <DialogFooter><DialogClose asChild><Button variant="outline">Close Audit</Button></DialogClose></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isAdjustmentDialogOpen} onOpenChange={setIsAdjustmentDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Financial Adjustment Request</DialogTitle>
+                        <DialogDescription>Submit a proposed change to an invoice total or transaction amount. All adjustments require audit approval.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-6 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label>Adjustment Type</Label>
+                                <Select value={adjustType} onValueChange={(v:any) => setAdjustType(v)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="invoice">Debit/Credit Note (Invoice)</SelectItem>
+                                        <SelectItem value="transaction">Edit Transaction Amount</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Student</Label>
+                                <SearchableSelect options={studentOptions} value={adjustStudentId} onValueChange={setAdjustStudentId} placeholder="Select student..." />
+                            </div>
+                        </div>
+
+                        {adjustStudentId && (
+                            <div className="space-y-4 border p-4 rounded-xl bg-muted/20 animate-in fade-in slide-in-from-top-2">
+                                <div className="space-y-1">
+                                    <Label>Target {adjustType === 'invoice' ? 'Semester Invoice' : 'Transaction'}</Label>
+                                    <Select value={adjustTargetId} onValueChange={(v) => {
+                                        setAdjustTargetId(v);
+                                        if (adjustType === 'invoice') {
+                                            const info = paymentInfos.find(p => p.semesterId === v && p.userId === adjustStudentId);
+                                            setAdjustOldValue(info?.totalDue || 0);
+                                        } else {
+                                            const tx = rawTransactions.find(t => t.key === v);
+                                            setAdjustOldValue(tx?.amount || 0);
+                                        }
+                                    }}>
+                                        <SelectTrigger><SelectValue placeholder={`Select ${adjustType}...`}/></SelectTrigger>
+                                        <SelectContent>
+                                            {adjustType === 'invoice' ? 
+                                                paymentInfos.filter(p => p.userId === adjustStudentId).map(p => <SelectItem key={p.semesterId!} value={p.semesterId!}>{p.semesterName} (Current: {p.totalDue})</SelectItem>) :
+                                                rawTransactions.filter(t => t.userId === adjustStudentId).map(t => <SelectItem key={t.key} value={t.key}>{format(parseISO(t.paymentDate), 'dd MMM')} - ZMW {t.amount} ({t.transactionId})</SelectItem>)
+                                            }
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <Label>Current Value</Label>
+                                        <Input value={adjustOldValue.toFixed(2)} disabled className="bg-muted opacity-60"/>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label>Proposed New Value</Label>
+                                        <Input type="number" value={adjustNewValue} onChange={e => setAdjustNewValue(e.target.value)} placeholder="0.00" />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <Label>Reason for Adjustment</Label>
+                                    <Textarea value={adjustReason} onChange={e => setAdjustReason(e.target.value)} placeholder="Explain the error or adjustment requirement..." />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                        <Button onClick={handleCreateAdjustment} disabled={formLoading || !adjustTargetId || !adjustNewValue}>
+                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                            Submit Adjustment
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

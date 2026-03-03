@@ -10,6 +10,7 @@ import Image from 'next/image';
 import { db, storage } from '@/lib/firebase';
 import { ref, get, set, push, onValue, serverTimestamp, update, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
