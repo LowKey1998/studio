@@ -52,7 +52,7 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
-import { format, parseISO, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth, startOfDay } from 'date-fns';
+import { format, parseISO, isWithinInterval, isBefore, isToday, isThisWeek, isThisMonth, startOfDay, isAfter } from 'date-fns';
 import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -280,9 +280,7 @@ export default function PaymentsManagementPage() {
     }), []);
 
     const computeDerived = React.useCallback((store: any) => {
-        if (!store.users) {
-            return;
-        }
+        if (!store.users) return;
 
         const users = store.users;
         const regsData = store.registrations || {};
@@ -320,7 +318,10 @@ export default function PaymentsManagementPage() {
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
             const userPool = [...(studentCredits[userId] || [])];
-            const unallocatedCredits = userPool.filter(t => !t.invoiceId || !invsData[userId]?.[t.invoiceId]);
+            
+            // Separate linked and unlinked
+            const linkedTxs = userPool.filter(t => t.invoiceId && invsData[userId]?.[t.invoiceId]);
+            const unlinkedTxs = userPool.filter(t => !t.invoiceId || !invsData[userId]?.[t.invoiceId]);
 
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
@@ -378,8 +379,27 @@ export default function PaymentsManagementPage() {
 
                 // Credit Attribution Logic:
                 let matchedTransactions = reg.invoiceId 
-                    ? userPool.filter(t => t.invoiceId === reg.invoiceId)
+                    ? linkedTxs.filter(t => t.invoiceId === reg.invoiceId)
                     : [];
+                
+                // For provisional or if this is the "main" record, we can include unlinked credits if desired
+                // But normally we only show linked. If we want unlinked to show up on the current phase:
+                const intake = store.intakes?.[semesterInfo.intakeId];
+                const intakeStart = intake ? parseIntakeDate(intake.name) : null;
+                let isCurrentStanding = false;
+                if (intakeStart && store.academicCalendar) {
+                    const cal = store.academicCalendar;
+                    const state = calculateAcademicState(intakeStart, now, cal.standardCycles, Object.values(cal.anomalies || {}));
+                    isCurrentStanding = (semesterInfo.year === state.year && semesterInfo.semesterInYear === state.semester);
+                }
+
+                if (isCurrentStanding) {
+                    unlinkedTxs.forEach(ut => {
+                        if (!matchedTransactions.find(mt => mt.key === ut.key)) {
+                            matchedTransactions.push(ut);
+                        }
+                    });
+                }
                 
                 const totalPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -442,6 +462,7 @@ export default function PaymentsManagementPage() {
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { store.financialSettings = snapshot.val(); computeDerived(store); }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.academicCalendar, (s) => { store.academicCalendar = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.scholarships, (s) => { store.scholarships = s.val() || {}; computeDerived(store); }));
 
         return () => unsubs.forEach(unsub => unsub());
