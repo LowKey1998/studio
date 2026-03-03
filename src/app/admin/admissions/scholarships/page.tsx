@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from 'react';
@@ -49,49 +50,50 @@ export default function ScholarshipAssignmentsPage() {
 
     const { toast } = useToast();
 
-    React.useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const [usersSnap, progSnap, scholSnap, intakesSnap] = await Promise.all([
-                    get(ref(db, 'users')),
-                    get(ref(db, 'programmes')),
-                    get(ref(db, 'scholarships')),
-                    get(ref(db, 'intakes'))
-                ]);
+    const fetchData = React.useCallback(async () => {
+        setLoading(true);
+        try {
+            const [usersSnap, progSnap, scholSnap, intakesSnap] = await Promise.all([
+                get(ref(db, 'users')),
+                get(ref(db, 'programmes')),
+                get(ref(db, 'scholarships')),
+                get(ref(db, 'intakes'))
+            ]);
 
-                const progs = progSnap.val() || {};
-                const schols = scholSnap.val() || {};
-                const ints = intakesSnap.val() || {};
-                
-                setProgrammes(Object.entries(progs).map(([id, d]:[string, any]) => ({ id, ...d })));
-                setScholarships(Object.entries(schols).map(([id, d]:[string, any]) => ({ id, ...d })));
-                setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
+            const progs = progSnap.val() || {};
+            const schols = scholSnap.val() || {};
+            const ints = intakesSnap.val() || {};
+            
+            setProgrammes(Object.entries(progs).map(([id, d]:[string, any]) => ({ id, ...d })));
+            setScholarships(Object.entries(schols).map(([id, d]:[string, any]) => ({ id, ...d })));
+            setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
-                if (usersSnap.exists()) {
-                    const data = usersSnap.val();
-                    const list = Object.keys(data)
-                        .filter(uid => data[uid].role === 'Student')
-                        .map(uid => {
-                            const sId = data[uid].scholarshipId;
-                            return {
-                                uid,
-                                ...data[uid],
-                                programmeName: progs[data[uid].programmeId]?.name || 'N/A',
-                                scholarshipName: sId ? schols[sId]?.name : null,
-                                scholarshipPercentage: sId ? schols[sId]?.percentage : 0
-                            };
-                        });
-                    setStudents(list);
-                }
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
+            if (usersSnap.exists()) {
+                const data = usersSnap.val();
+                const list = Object.keys(data)
+                    .filter(uid => data[uid].role === 'Student')
+                    .map(uid => {
+                        const sId = data[uid].scholarshipId;
+                        return {
+                            uid,
+                            ...data[uid],
+                            programmeName: progs[data[uid].programmeId]?.name || 'N/A',
+                            scholarshipName: sId ? schols[sId]?.name : null,
+                            scholarshipPercentage: sId ? schols[sId]?.percentage : 0
+                        };
+                    });
+                setStudents(list);
             }
-        };
-        fetchData();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    React.useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleAssign = async (studentUid: string, scholId: string) => {
         if (!scholId) return;

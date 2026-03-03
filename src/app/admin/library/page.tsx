@@ -144,7 +144,6 @@ export default function LibraryPage() {
         }
     }, [isScannerActive, stopScanner, toast]);
 
-    // Robust scanner initialization
     React.useEffect(() => {
         let qrScanner: Html5Qrcode | null = null;
 
@@ -244,7 +243,7 @@ export default function LibraryPage() {
                 toast({ title: 'Book Updated' });
             } else {
                 const newBookRef = push(ref(db, 'libraryBooks'));
-                await set(newBookRef, bookData);
+                await set(newBookRef, { ...bookData, createdAt: serverTimestamp() });
                 toast({ title: 'Book Added' });
             }
             

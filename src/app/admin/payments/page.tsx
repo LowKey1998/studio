@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -357,6 +358,7 @@ export default function PaymentsManagementPage() {
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
             const userPool = [...(studentCredits[userId] || [])];
+            const unallocatedCredits = userPool.filter(t => !t.invoiceId || !invsData[userId]?.[t.invoiceId]);
 
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
@@ -415,10 +417,24 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // Identify Current Standing for unallocated credit attribution
+                const intake = store.intakes[profile.intakeId];
+                const intakeStart = intake ? parseIntakeDate(intake.name) : null;
+                let isCurrentStanding = false;
+                if (intakeStart && store.academicCalendar) {
+                    const standing = calculateAcademicState(intakeStart, now, store.academicCalendar.standardCycles, Object.values(store.academicCalendar.anomalies || {}));
+                    isCurrentStanding = (semesterInfo.year === standing.year && semesterInfo.semesterInYear === standing.semester);
+                }
+
                 // Credit Attribution Logic:
-                const matchedTransactions = reg.invoiceId 
+                let matchedTransactions = reg.invoiceId 
                     ? userPool.filter(t => t.invoiceId === reg.invoiceId)
-                    : isProvisional ? userPool.filter(t => !t.invoiceId) : [];
+                    : [];
+                
+                // If this is the current active semester, attribute all unallocated credits to it
+                if (isCurrentStanding) {
+                    matchedTransactions = [...matchedTransactions, ...unallocatedCredits];
+                }
                 
                 const totalPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -471,7 +487,7 @@ export default function PaymentsManagementPage() {
         unsubs.push(onValue(dataRefs.courses, (s) => { store.courses = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { store.financialSettings = snapshot.val(); computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
+        unsubs.push(dataRefs.calendarEvents ? onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }) : () => {});
         unsubs.push(onValue(dataRefs.academicCalendar, (snapshot) => { store.academicCalendar = snapshot.val(); computeDerived(store); }));
         unsubs.push(onValue(dataRefs.paymentPlans, (s) => { store.paymentPlans = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(store); }));
