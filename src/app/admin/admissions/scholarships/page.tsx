@@ -207,7 +207,7 @@ export default function ScholarshipAssignmentsPage() {
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Status</Label>
-                            <Select value={scholarshipFilter} onValueChange={setScholarshipFilter}>
+                            <Select value={scholarshipFilter} onValueChange={set scholarshipFilter}>
                                 <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Students</SelectItem>

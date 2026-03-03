@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Search, BookCheck, BookX, PlusCircle, Loader2, Library, BookUp, Upload, Trash2, Pencil, Barcode, X, Camera, Zap, AlertCircle } from "lucide-react";
 import Image from 'next/image';
 import { db, storage } from '@/lib/firebase';
-import { ref, get, set, push, onValue, update, remove } from 'firebase/database';
+import { ref, get, set, push, onValue, serverTimestamp, update, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
