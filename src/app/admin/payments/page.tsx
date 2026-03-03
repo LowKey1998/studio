@@ -19,7 +19,11 @@ import {
     FileCheck,
     TrendingUp,
     ReceiptText,
-    GraduationCap
+    GraduationCap,
+    History,
+    Receipt,
+    AlertTriangle,
+    CheckCircle2
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -127,9 +131,8 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFeeValue?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
-type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string } };
 
@@ -208,17 +211,6 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
     );
 }
 
-const getCoursesFromReg = (raw: any): string[] => {
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw.filter(id => typeof id === 'string');
-    if (typeof raw === 'object') {
-        const values = Object.values(raw);
-        if (values.every(v => typeof v === 'boolean')) return Object.keys(raw);
-        return values.filter(v => typeof v === 'string') as string[];
-    }
-    return [];
-};
-
 export default function PaymentsManagementPage() {
     const { user, userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
@@ -245,11 +237,6 @@ export default function PaymentsManagementPage() {
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
     
-    const [isAdjustmentOpen, setIsAdjustmentOpen] = React.useState(false);
-    const [adjustmentTarget, setAdjustmentTarget] = React.useState<{ type: 'debit' | 'credit', id: string, userId: string, studentName: string, studentId: string, invoiceId: string } | null>(null);
-    const [adjAmount, setAdjAmount] = React.useState('');
-    const [adjReason, setAdjReason] = React.useState('');
-
     const [formLoading, setFormLoading] = React.useState(false);
 
     const { toast } = useToast();
@@ -382,8 +369,7 @@ export default function PaymentsManagementPage() {
                     ? linkedTxs.filter(t => t.invoiceId === reg.invoiceId)
                     : [];
                 
-                // For provisional or if this is the "main" record, we can include unlinked credits if desired
-                // But normally we only show linked. If we want unlinked to show up on the current phase:
+                // Fallback for provisional: Use unlinked credits if this is the student's current/latest record
                 const intake = store.intakes?.[semesterInfo.intakeId];
                 const intakeStart = intake ? parseIntakeDate(intake.name) : null;
                 let isCurrentStanding = false;
