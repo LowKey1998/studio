@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -22,7 +23,8 @@ import {
     History,
     Receipt,
     AlertTriangle,
-    CheckCircle2
+    CheckCircle2,
+    Save
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -120,6 +122,7 @@ type Transaction = {
     key: string;
     transactionId: string;
     invoiceId?: string;
+    semesterId?: string;
     userId: string;
     amount: number;
     paymentDate: string;
@@ -315,10 +318,6 @@ export default function PaymentsManagementPage() {
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
             const userPool = [...(studentCredits[userId] || [])];
-            
-            // Separate linked and unlinked
-            const linkedTxs = userPool.filter(t => t.invoiceId && invsData[userId]?.[t.invoiceId]);
-            const unlinkedTxs = userPool.filter(t => !t.invoiceId || !invsData[userId]?.[t.invoiceId]);
 
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
@@ -374,28 +373,11 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // Credit Attribution Logic:
-                let matchedTransactions = reg.invoiceId 
-                    ? linkedTxs.filter(t => t.invoiceId === reg.invoiceId)
-                    : [];
-                
-                // Fallback for provisional: Use unlinked credits if this is the student's current/latest record
-                const intake = store.intakes?.[semesterInfo.intakeId];
-                const intakeStart = intake ? parseIntakeDate(intake.name) : null;
-                let isCurrentStanding = false;
-                if (intakeStart && store.academicCalendar) {
-                    const cal = store.academicCalendar;
-                    const state = calculateAcademicState(intakeStart, now, cal.standardCycles, Object.values(cal.anomalies || {}));
-                    isCurrentStanding = (semesterInfo.year === state.year && semesterInfo.semesterInYear === state.semester);
-                }
-
-                if (isCurrentStanding) {
-                    unlinkedTxs.forEach(ut => {
-                        if (!matchedTransactions.find(mt => mt.key === ut.key)) {
-                            matchedTransactions.push(ut);
-                        }
-                    });
-                }
+                // Financial Attribution: Match by explicit invoiceId OR explicit semesterId
+                const matchedTransactions = userPool.filter(t => 
+                    (reg.invoiceId && t.invoiceId === reg.invoiceId) || 
+                    (t.semesterId === semesterId)
+                );
                 
                 const totalPaid = matchedTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                 const balance = Math.max(0, billingResults.totalDue - totalPaid);
@@ -544,7 +526,17 @@ export default function PaymentsManagementPage() {
                     updates[`transactions/${txRef.key}`] = { transactionId: `DEP-${Date.now()}`, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash', recordedBy: userData.name, requestId: reqRef.key, senderName: row.tempStudentName || null };
                 } else if (row.userId) {
                     const txRef = push(ref(db, 'transactions'));
-                    updates[`transactions/${txRef.key}`] = { transactionId: `CASH-${Date.now()}`, userId: row.userId, invoiceId: row.invoiceId || null, amount, paymentDate: now, status: 'successful', method: 'Cash', recordedBy: userData.name };
+                    updates[`transactions/${txRef.key}`] = { 
+                        transactionId: `CASH-${Date.now()}`, 
+                        userId: row.userId, 
+                        semesterId: row.semesterId,
+                        invoiceId: row.invoiceId || null, 
+                        amount, 
+                        paymentDate: now, 
+                        status: 'successful', 
+                        method: 'Cash', 
+                        recordedBy: userData.name 
+                    };
                     createNotification(row.userId, `Payment of ZMW ${amount.toFixed(2)} recorded for ${row.academicStanding}.`, '/student/payments').catch(() => {});
                 }
             }
@@ -788,7 +780,7 @@ export default function PaymentsManagementPage() {
                             </Card>
                         )})}
                     </div>
-                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg"><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 font-black uppercase text-xs">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}Process Batch</Button></DialogFooter>
+                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg"><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 font-black uppercase text-xs">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4 mr-2" />}Process Batch</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
