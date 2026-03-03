@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, BookCheck, BookX, PlusCircle, Loader2, Library, BookUp, Upload, Trash2, Pencil, Barcode, X, Camera, Zap, AlertCircle } from "lucide-react";
+import { Search, BookCheck, BookX, PlusCircle, Loader2, Library, BookUp, Upload, Trash2, Pencil, Barcode, X, Camera, Zap, AlertCircle, Check, Copy } from "lucide-react";
 import Image from 'next/image';
 import { db, storage } from '@/lib/firebase';
 import { ref, get, set, push, onValue, serverTimestamp, update, remove } from 'firebase/database';
@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type Book = {
     id: string;
@@ -48,6 +49,7 @@ const statusConfig: { [key in Book['status']]: { variant: 'default' | 'secondary
 };
 
 const SCANNER_ID = "isbn-scanner-region";
+const BULK_SCANNER_ID = "bulk-isbn-scanner-region";
 
 export default function LibraryPage() {
     const [books, setBooks] = React.useState<Book[]>([]);
@@ -69,7 +71,14 @@ export default function LibraryPage() {
     const [imageFile, setImageFile] = React.useState<File | null>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-    // ISBN Scanner State
+    // Bulk Scan State
+    const [isBulkDialogOpen, setIsBulkDialogOpen] = React.useState(false);
+    const [bulkScannerActive, setBulkScannerActive] = React.useState(false);
+    const [bulkScanner, setBulkScanner] = React.useState<Html5Qrcode | null>(null);
+    const [scannedBooks, setScannedBooks] = React.useState<Partial<Book>[]>([]);
+    const [processedIsbns, setProcessedIsbns] = React.useState<Set<string>>(new Set());
+
+    // Single Scan State
     const [isScannerActive, setIsScannerActive] = React.useState(false);
     const [scanner, setScanner] = React.useState<Html5Qrcode | null>(null);
     const [lookupIsbn, setLookupIsbn] = React.useState('');
@@ -95,11 +104,10 @@ export default function LibraryPage() {
 
         return () => {
             unsubscribe();
-            if (scanner) {
-                scanner.stop().catch(() => {});
-            }
+            if (scanner) scanner.stop().catch(() => {});
+            if (bulkScanner) bulkScanner.stop().catch(() => {});
         };
-    }, [scanner]);
+    }, [scanner, bulkScanner]);
 
     const stopScanner = React.useCallback(async () => {
         if (scanner) {
@@ -114,44 +122,72 @@ export default function LibraryPage() {
         }
     }, [scanner]);
 
-    const fetchBookByIsbn = React.useCallback(async (isbn: string) => {
+    const stopBulkScanner = React.useCallback(async () => {
+        if (bulkScanner) {
+            try {
+                await bulkScanner.stop();
+                setBulkScanner(null);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                 setBulkScannerActive(false);
+            }
+        }
+    }, [bulkScanner]);
+
+    const fetchBookByIsbn = React.useCallback(async (isbn: string, isBulk = false) => {
         const cleanIsbn = isbn.replace(/\D/g, '');
         if (!cleanIsbn) return;
 
-        setIsSearchingIsbn(true);
+        if (isBulk && processedIsbns.has(cleanIsbn)) return;
+
+        if (!isBulk) setIsSearchingIsbn(true);
+        
         try {
             const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
             const data = await response.json();
             if (data.totalItems > 0) {
                 const item = data.items[0].volumeInfo;
-                setTitle(item.title || '');
-                setAuthor(item.authors ? item.authors.join(', ') : '');
-                setGenre(item.categories ? item.categories.join(', ') : '');
-                setYear(item.publishedDate ? item.publishedDate.split('-')[0] : '');
-                setBarcode(cleanIsbn);
-                if (item.imageLinks?.thumbnail) {
-                    setImageUrl(item.imageLinks.thumbnail.replace('http://', 'https://'));
+                const bookData: Partial<Book> = {
+                    title: item.title || '',
+                    author: item.authors ? item.authors.join(', ') : 'Unknown',
+                    genre: item.categories ? item.categories.join(', ') : 'General',
+                    year: item.publishedDate ? parseInt(item.publishedDate.split('-')[0]) : undefined,
+                    barcode: cleanIsbn,
+                    image: item.imageLinks?.thumbnail?.replace('http://', 'https://') || 'https://placehold.co/300x400.png',
+                    count: 1,
+                    status: 'Available'
+                };
+
+                if (isBulk) {
+                    setScannedBooks(prev => [bookData, ...prev]);
+                    setProcessedIsbns(prev => new Set(prev).add(cleanIsbn));
+                    toast({ title: "Scanned", description: bookData.title });
+                } else {
+                    setTitle(bookData.title!);
+                    setAuthor(bookData.author!);
+                    setGenre(bookData.genre!);
+                    setYear(String(bookData.year || ''));
+                    setBarcode(cleanIsbn);
+                    setImageUrl(bookData.image!);
+                    toast({ title: "Book Found!", description: bookData.title });
+                    if (isScannerActive) stopScanner();
                 }
-                toast({ title: "Book Found!", description: item.title });
-                if (isScannerActive) stopScanner();
-            } else {
+            } else if (!isBulk) {
                 toast({ variant: 'destructive', title: "Not Found", description: "No book found for this ISBN." });
             }
         } catch (e) {
-            toast({ variant: 'destructive', title: "Search Error", description: "Could not fetch book metadata." });
+            if (!isBulk) toast({ variant: 'destructive', title: "Search Error" });
         } finally {
-            setIsSearchingIsbn(false);
+            if (!isBulk) setIsSearchingIsbn(false);
         }
-    }, [isScannerActive, stopScanner, toast]);
+    }, [isScannerActive, stopScanner, toast, processedIsbns]);
 
+    // Single Scanner Effect
     React.useEffect(() => {
         let qrScanner: Html5Qrcode | null = null;
-
         if (isScannerActive) {
             const timer = setTimeout(async () => {
-                const element = document.getElementById(SCANNER_ID);
-                if (!element) return;
-
                 try {
                     qrScanner = new Html5Qrcode(SCANNER_ID);
                     setScanner(qrScanner);
@@ -165,7 +201,6 @@ export default function LibraryPage() {
                         () => {}
                     );
                 } catch (err) {
-                    console.error("Scanner failed:", err);
                     setIsScannerActive(false);
                 }
             }, 300);
@@ -175,44 +210,80 @@ export default function LibraryPage() {
             };
         }
     }, [isScannerActive, fetchBookByIsbn]);
-    
-    const resetForm = () => {
-        setTitle('');
-        setAuthor('');
-        setGenre('');
-        setBarcode('');
-        setYear('');
-        setCount('');
-        setImageUrl('');
-        setImageFile(null);
-        setEditingBook(null);
-        setLookupIsbn('');
-        setHasCameraPermission(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        if (isScannerActive) stopScanner();
-    };
 
+    // Bulk Scanner Effect
+    React.useEffect(() => {
+        let qrScanner: Html5Qrcode | null = null;
+        if (bulkScannerActive) {
+            const timer = setTimeout(async () => {
+                try {
+                    qrScanner = new Html5Qrcode(BULK_SCANNER_ID);
+                    setBulkScanner(qrScanner);
+                    await qrScanner.start(
+                        { facingMode: "environment" },
+                        { fps: 10, qrbox: { width: 250, height: 150 } },
+                        (decodedText) => fetchBookByIsbn(decodedText, true),
+                        () => {}
+                    );
+                } catch (err) {
+                    setBulkScannerActive(false);
+                }
+            }, 300);
+            return () => {
+                clearTimeout(timer);
+                if (qrScanner) qrScanner.stop().catch(() => {});
+            };
+        }
+    }, [bulkScannerActive, fetchBookByIsbn]);
+    
     const startScanner = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            await navigator.mediaDevices.getUserMedia({ video: true });
             setHasCameraPermission(true);
-            stream.getTracks().forEach(track => track.stop());
             setIsScannerActive(true);
         } catch (err) {
             setHasCameraPermission(false);
-            setIsScannerActive(false);
-            toast({ 
-                variant: 'destructive', 
-                title: "Camera Access Denied", 
-                description: "Please enable camera permissions in your browser settings." 
+            toast({ variant: 'destructive', title: "Camera Access Denied" });
+        }
+    };
+
+    const startBulkScanner = async () => {
+        try {
+            await navigator.mediaDevices.getUserMedia({ video: true });
+            setHasCameraPermission(true);
+            setBulkScannerActive(true);
+        } catch (err) {
+            setHasCameraPermission(false);
+            toast({ variant: 'destructive', title: "Camera Access Denied" });
+        }
+    };
+
+    const handleSaveBulk = async () => {
+        if (scannedBooks.length === 0) return;
+        setFormLoading(true);
+        try {
+            const updates: Record<string, any> = {};
+            scannedBooks.forEach(book => {
+                const newRef = push(ref(db, 'libraryBooks'));
+                updates[`libraryBooks/${newRef.key}`] = { ...book, createdAt: serverTimestamp() };
             });
+            await update(ref(db), updates);
+            toast({ title: "Bulk Import Complete", description: `Added ${scannedBooks.length} books.` });
+            setScannedBooks([]);
+            setProcessedIsbns(new Set());
+            setIsBulkDialogOpen(false);
+            if (bulkScannerActive) stopBulkScanner();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Save Failed" });
+        } finally {
+            setFormLoading(false);
         }
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!title || !author) {
-            toast({ variant: 'destructive', title: 'Missing Fields', description: 'Title and Author are required.' });
+            toast({ variant: 'destructive', title: 'Missing Fields' });
             return;
         }
         setFormLoading(true);
@@ -223,15 +294,12 @@ export default function LibraryPage() {
                 const imageStorageRef = storageRef(storage, `libraryCovers/${Date.now()}_${imageFile.name}`);
                 const snapshot = await uploadBytes(imageStorageRef, imageFile);
                 finalImageUrl = await getDownloadURL(snapshot.ref);
-            } else if (imageUrl && imageUrl.startsWith('http') && !imageUrl.includes('placehold.co')) {
+            } else if (imageUrl) {
                 finalImageUrl = imageUrl;
             }
 
             const bookData = {
-                title,
-                author,
-                genre: genre || '',
-                barcode: barcode || '',
+                title, author, genre: genre || '', barcode: barcode || '',
                 year: year ? parseInt(year) : null,
                 count: count ? parseInt(count) : 1,
                 image: finalImageUrl,
@@ -250,7 +318,7 @@ export default function LibraryPage() {
             resetForm();
             setIsDialogOpen(false);
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Operation Failed', description: error.message });
+            toast({ variant: 'destructive', title: 'Operation Failed' });
         } finally {
             setFormLoading(false);
         }
@@ -258,8 +326,7 @@ export default function LibraryPage() {
 
     const handleDeleteBook = async () => {
         if (!editingBook) return;
-        if (!window.confirm("Are you sure? This action cannot be undone.")) return;
-        
+        if (!window.confirm("Permanently delete this record?")) return;
         setFormLoading(true);
         try {
             await remove(ref(db, `libraryBooks/${editingBook.id}`));
@@ -267,41 +334,9 @@ export default function LibraryPage() {
             setIsDialogOpen(false);
             resetForm();
         } catch(e: any) {
-            toast({ variant: 'destructive', title: 'Delete Failed', description: e.message });
+            toast({ variant: 'destructive', title: 'Delete Failed' });
         } finally {
             setFormLoading(false);
-        }
-    };
-
-    const handleOpenDialog = (book: Book | null = null) => {
-        if (book) {
-            setEditingBook(book);
-            setTitle(book.title);
-            setAuthor(book.author);
-            setGenre(book.genre);
-            setBarcode(book.barcode || '');
-            setYear(String(book.year || ''));
-            setCount(String(book.count || ''));
-            setImageUrl(book.image);
-        } else {
-            resetForm();
-        }
-        setIsDialogOpen(true);
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0] || null;
-        if(file && file.size > 5 * 1024 * 1024) {
-            toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 5MB.' });
-            return;
-        }
-        setImageFile(file);
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImageUrl(reader.result as string);
-            };
-            reader.readAsDataURL(file);
         }
     };
 
@@ -313,95 +348,27 @@ export default function LibraryPage() {
 
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle className="font-headline text-2xl">Library Catalog Management</CardTitle>
                             <CardDescription>Browse, add, and manage books available in the library.</CardDescription>
                         </div>
-                        <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
-                            <DialogTrigger asChild><Button onClick={() => handleOpenDialog()}><PlusCircle className="mr-2 h-4 w-4" /> Add Book</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-xl">
-                                <form onSubmit={handleFormSubmit}>
-                                    <DialogHeader>
-                                        <DialogTitle className="font-headline">{editingBook ? 'Edit' : 'Add New'} Book</DialogTitle>
-                                        <DialogDescription>Enter an ISBN to auto-fill or complete details manually.</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
-                                        <div className="space-y-2 p-4 rounded-xl border bg-muted/20">
-                                            <Label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                                <Barcode className="h-3 w-3" /> ISBN Lookup & Scan
-                                            </Label>
-                                            <div className="flex gap-2">
-                                                <Input 
-                                                    placeholder="Enter ISBN..." 
-                                                    value={lookupIsbn}
-                                                    onChange={e => setLookupIsbn(e.target.value)}
-                                                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), fetchBookByIsbn(lookupIsbn))}
-                                                    className="bg-background font-mono h-10"
-                                                />
-                                                <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={isScannerActive ? stopScanner : startScanner}>
-                                                    {isScannerActive ? <X className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
-                                                </Button>
-                                                <Button type="button" size="sm" className="h-10 px-4" onClick={() => fetchBookByIsbn(lookupIsbn)} disabled={isSearchingIsbn || !lookupIsbn}>
-                                                    {isSearchingIsbn ? <Loader2 className="h-4 w-4 animate-spin"/> : <Zap className="h-4 w-4 mr-1.5"/>}
-                                                    Lookup
-                                                </Button>
-                                            </div>
-                                            {isScannerActive && <div id={SCANNER_ID} className="w-full aspect-[4/3] mt-2 rounded-lg border overflow-hidden bg-black shadow-inner" />}
-                                            {hasCameraPermission === false && (
-                                                <Alert variant="destructive" className="mt-2">
-                                                    <AlertCircle className="h-4 w-4" />
-                                                    <AlertTitle>Camera Access Required</AlertTitle>
-                                                    <AlertDescription>Enable camera permissions in your browser settings.</AlertDescription>
-                                                </Alert>
-                                            )}
-                                        </div>
-
-                                        <Separator />
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1"><Label htmlFor="title">Title *</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={formLoading} required /></div>
-                                            <div className="space-y-1"><Label htmlFor="author">Author *</Label><Input id="author" value={author} onChange={(e) => setAuthor(e.target.value)} disabled={formLoading} required /></div>
-                                        </div>
-                                        <div className="space-y-1"><Label htmlFor="genre">Genre / Category</Label><Input id="genre" value={genre} onChange={(e) => setGenre(e.target.value)} disabled={formLoading} /></div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1"><Label htmlFor="year">Year Published</Label><Input id="year" type="number" value={year} onChange={(e) => setYear(e.target.value)} disabled={formLoading} /></div>
-                                            <div className="space-y-1"><Label htmlFor="count">Copies</Label><Input id="count" type="number" placeholder="1" value={count} onChange={(e) => setCount(e.target.value)} disabled={formLoading} /></div>
-                                        </div>
-                                        <div className="space-y-1"><Label htmlFor="barcode">Barcode</Label><Input id="barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={formLoading} /></div>
-                                        <div className="space-y-1">
-                                            <Label>Book Cover</Label>
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative w-16 h-24 border rounded overflow-hidden bg-muted shrink-0">
-                                                    {imageUrl ? <img src={imageUrl} alt="preview" className="w-full h-full object-cover" /> : <div className="flex items-center justify-center h-full text-muted-foreground"><Library className="h-6 w-6 opacity-20"/></div>}
-                                                </div>
-                                                <div className="flex-1 space-y-2">
-                                                    <Input id="imageUrl" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={formLoading || !!imageFile} className="text-xs h-8" />
-                                                    <Input id="imageFile" type="file" accept="image/*" onChange={handleFileChange} className="h-8 text-xs file:h-full file:text-[10px] file:px-2" ref={fileInputRef} disabled={formLoading} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <DialogFooter className="flex justify-between w-full border-t pt-4">
-                                        {editingBook ? (
-                                            <Button type="button" variant="ghost" className="text-destructive font-bold h-10 px-4" onClick={handleDeleteBook} disabled={formLoading}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
-                                        ) : <div/> }
-                                        <div className="flex gap-2">
-                                            <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
-                                            <Button type="submit" disabled={formLoading} className="font-bold shadow-md">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingBook ? 'Save Changes' : 'Add Book'}</Button>
-                                        </div>
-                                    </DialogFooter>
-                                </form>
-                            </DialogContent>
-                        </Dialog>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => { setScannedBooks([]); setProcessedIsbns(new Set()); setIsBulkDialogOpen(true); }}>
+                                <Copy className="mr-2 h-4 w-4" /> Bulk ISBN Import
+                            </Button>
+                            <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
+                                <PlusCircle className="mr-2 h-4 w-4" /> Add Book
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
                     <div className="relative w-full max-w-xl">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search catalog..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        <Input placeholder="Search catalog by title, author or genre..." className="pl-8 bg-background" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
                 </CardContent>
             </Card>
@@ -418,7 +385,11 @@ export default function LibraryPage() {
                                 <div className="relative h-56 w-full">
                                     <Image src={book.image} alt={`Cover of ${book.title}`} layout="fill" objectFit="cover" data-ai-hint={book.hint} />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <Button variant="secondary" size="sm" onClick={() => handleOpenDialog(book)} className="font-bold"><Pencil className="mr-2 h-4 w-4"/>Edit Details</Button>
+                                        <Button variant="secondary" size="sm" onClick={() => {
+                                            setEditingBook(book); setTitle(book.title); setAuthor(book.author); setGenre(book.genre);
+                                            setBarcode(book.barcode || ''); setYear(String(book.year || '')); setCount(String(book.count || ''));
+                                            setImageUrl(book.image); setIsDialogOpen(true);
+                                        }} className="font-bold"><Pencil className="mr-2 h-4 w-4"/>Edit Details</Button>
                                     </div>
                                 </div>
                                 <div className="p-4"><CardTitle className="font-headline text-lg leading-tight line-clamp-1">{book.title}</CardTitle><CardDescription className="line-clamp-1">by {book.author}</CardDescription></div>
@@ -435,12 +406,107 @@ export default function LibraryPage() {
                             </CardContent>
                             <CardFooter className="flex justify-between items-center bg-muted/50 p-4 border-t">
                                 <Badge variant={statusConfig[book.status].variant} className="flex items-center h-6 text-[10px] font-black uppercase tracking-widest">{statusConfig[book.status].icon}{book.status}</Badge>
-                                <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(book)} className="h-8">Details</Button>
                             </CardFooter>
                         </Card>
                     ))}
                 </div>
             )}
+
+            {/* Bulk ISBN Dialog */}
+            <Dialog open={isBulkDialogOpen} onOpenChange={(o) => { if(!o) stopBulkScanner(); setIsBulkDialogOpen(o); }}>
+                <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl font-black">Bulk ISBN Import</DialogTitle>
+                        <DialogDescription>Keep the scanner active to identify multiple books in sequence.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden py-4">
+                        <div className="flex flex-col gap-4 border p-4 rounded-xl bg-muted/10">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-primary">Active Scanner</Label>
+                                <Button variant="outline" size="sm" onClick={bulkScannerActive ? stopBulkScanner : startBulkScanner}>
+                                    {bulkScannerActive ? <><X className="mr-2 h-4 w-4"/>Stop</> : <><Camera className="mr-2 h-4 w-4"/>Start Camera</>}
+                                </Button>
+                            </div>
+                            <div id={BULK_SCANNER_ID} className="flex-1 rounded-lg bg-black border-2 border-primary/20 overflow-hidden relative">
+                                {!bulkScannerActive && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                                        <Barcode className="h-12 w-12 opacity-20" />
+                                        <p className="text-xs font-bold uppercase tracking-widest">Camera Inactive</p>
+                                    </div>
+                                )}
+                            </div>
+                            {hasCameraPermission === false && <Alert variant="destructive"><AlertCircle className="h-4 w-4"/><AlertTitle>Permissions Required</AlertTitle></Alert>}
+                        </div>
+                        <div className="flex flex-col gap-2 border p-4 rounded-xl overflow-hidden">
+                            <Label className="text-[10px] font-black uppercase tracking-widest">Scanned Queue ({scannedBooks.length})</Label>
+                            <ScrollArea className="flex-1 bg-muted/5 rounded-lg border p-2">
+                                <div className="space-y-2">
+                                    {scannedBooks.map((b, i) => (
+                                        <div key={i} className="flex items-center gap-3 p-2 bg-background border rounded-lg shadow-sm">
+                                            <img src={b.image} className="w-10 h-14 object-cover rounded" alt="Cover"/>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-xs truncate">{b.title}</p>
+                                                <p className="text-[10px] text-muted-foreground truncate">{b.author}</p>
+                                            </div>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
+                                                setScannedBooks(prev => prev.filter((_, idx) => idx !== i));
+                                                setProcessedIsbns(prev => { const n = new Set(prev); n.delete(b.barcode!); return n; });
+                                            }}><Trash2 className="h-4 w-4"/></Button>
+                                        </div>
+                                    ))}
+                                    {scannedBooks.length === 0 && <p className="text-center py-20 text-xs text-muted-foreground italic">No books scanned yet.</p>}
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    </div>
+                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg">
+                        <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Close</Button>
+                        <Button onClick={handleSaveBulk} disabled={formLoading || scannedBooks.length === 0} className="px-8 font-bold shadow-lg">
+                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4" />}
+                            Import {scannedBooks.length} Books
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add/Edit Dialog */}
+            <Dialog open={isDialogOpen} onOpenChange={(o) => { if (!o) resetForm(); setIsDialogOpen(o); }}>
+                <DialogContent className="sm:max-w-xl">
+                    <form onSubmit={handleFormSubmit}>
+                        <DialogHeader>
+                            <DialogTitle className="font-headline">{editingBook ? 'Edit' : 'Add New'} Book</DialogTitle>
+                            <DialogDescription>Provide details or use ISBN lookup to auto-fill.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
+                            <div className="space-y-2 p-4 rounded-xl border bg-muted/20">
+                                <Label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2"><Barcode className="h-3 w-3" /> ISBN Lookup</Label>
+                                <div className="flex gap-2">
+                                    <Input placeholder="Enter ISBN..." value={lookupIsbn} onChange={e => setLookupIsbn(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), fetchBookByIsbn(lookupIsbn))} className="bg-background font-mono h-10"/>
+                                    <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={isScannerActive ? stopScanner : startScanner}>{isScannerActive ? <X className="h-4 w-4" /> : <Camera className="h-4 w-4" />}</Button>
+                                    <Button type="button" size="sm" className="h-10 px-4" onClick={() => fetchBookByIsbn(lookupIsbn)} disabled={isSearchingIsbn || !lookupIsbn}>{isSearchingIsbn ? <Loader2 className="h-4 w-4 animate-spin"/> : <Zap className="h-4 w-4 mr-1.5"/>}Lookup</Button>
+                                </div>
+                                {isScannerActive && <div id={SCANNER_ID} className="w-full aspect-[4/3] mt-2 rounded-lg border overflow-hidden bg-black shadow-inner" />}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1"><Label htmlFor="title">Title *</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={formLoading} required /></div>
+                                <div className="space-y-1"><Label htmlFor="author">Author *</Label><Input id="author" value={author} onChange={(e) => setAuthor(e.target.value)} disabled={formLoading} required /></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1"><Label htmlFor="genre">Genre</Label><Input id="genre" value={genre} onChange={(e) => setGenre(e.target.value)} disabled={formLoading} /></div>
+                                <div className="space-y-1"><Label htmlFor="count">Copies</Label><Input id="count" type="number" value={count} onChange={(e) => setCount(e.target.value)} disabled={formLoading} /></div>
+                            </div>
+                            <div className="space-y-1"><Label>Image URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={formLoading} /></div>
+                        </div>
+                        <DialogFooter className="flex justify-between w-full border-t pt-4">
+                            {editingBook && <Button type="button" variant="ghost" className="text-destructive font-bold" onClick={handleDeleteBook} disabled={formLoading}>Delete</Button>}
+                            <div className="flex gap-2">
+                                <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
+                                <Button type="submit" disabled={formLoading} className="font-bold">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingBook ? 'Save' : 'Add'}</Button>
+                            </div>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
