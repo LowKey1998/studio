@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -135,6 +134,17 @@ type Semester = { id: string; name: string; intakeId: string; year: number; seme
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string } };
+
+const getCoursesFromReg = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter((id: any) => typeof id === 'string');
+    if (typeof raw === 'object') {
+        const values = Object.values(raw);
+        if (values.every(v => typeof v === 'boolean')) return Object.keys(raw);
+        return values.filter(v => typeof v === 'string') as string[];
+    }
+    return [];
+};
 
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];

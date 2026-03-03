@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from 'react';
@@ -163,15 +162,17 @@ export default function ScholarshipAssignmentsPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary rounded-lg shadow-md"><GraduationCap className="h-6 w-6 text-white" /></div>
-                        <div>
-                            <CardTitle className="font-headline text-2xl">Scholarship Center</CardTitle>
-                            <CardDescription>Assign financial aid and manage tuition waivers for students.</CardDescription>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary rounded-lg shadow-md"><GraduationCap className="h-6 w-6 text-white" /></div>
+                            <div>
+                                <CardTitle className="font-headline text-2xl">Scholarship Center</CardTitle>
+                                <CardDescription>Assign financial aid and manage tuition waivers for students.</CardDescription>
+                            </div>
                         </div>
+                        <Button variant="outline" onClick={handlePrint} disabled={filteredStudents.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Recipient List</Button>
                     </div>
-                    <Button variant="outline" onClick={handlePrint} disabled={filteredStudents.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Recipient List</Button>
                 </CardHeader>
             </Card>
 
