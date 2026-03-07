@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -351,7 +350,6 @@ export default function PaymentsManagementPage() {
 
             const userPool = [...(studentCredits[userId] || [])];
             
-            // Resolve intake cycle for current standing calculation
             const intakeName = store.intakes?.[profile.intakeId]?.name;
             const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
             let currentStanding: { year: number, semester: number } | null = null;
@@ -418,7 +416,6 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
-                // Match transactions by invoiceId OR semesterId
                 const matchedTransactions = userPool.filter(t => 
                     (reg.invoiceId && t.invoiceId === reg.invoiceId) || 
                     (t.semesterId === semesterId)
@@ -468,7 +465,6 @@ export default function PaymentsManagementPage() {
         const unsubs: (() => void)[] = [];
         const store: any = {};
 
-        unsubs.push(onChildAdded(dataRefs.users, () => computeDerived(store))); // Minimal trigger
         unsubs.push(onValue(dataRefs.users, (snapshot) => { store.users = snapshot.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.registrations, (s) => { store.registrations = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.transactions, (s) => { store.transactions = s.val() || {}; computeDerived(store); }));
