@@ -255,6 +255,7 @@ export default function PaymentsManagementPage() {
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
@@ -279,6 +280,7 @@ export default function PaymentsManagementPage() {
     const [adjustReason, setAdjustReason] = React.useState('');
 
     const [formLoading, setFormLoading] = React.useState(false);
+    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '', billingPolicy: 'course' });
 
     const { toast } = useToast();
 
@@ -304,7 +306,8 @@ export default function PaymentsManagementPage() {
         financialSettings: ref(db, 'settings/financialSettings'),
         calendarEvents: ref(db, 'calendarEvents'),
         academicCalendar: ref(db, 'settings/academicCalendar'),
-        scholarships: ref(db, 'scholarships')
+        scholarships: ref(db, 'scholarships'),
+        institution: ref(db, 'settings/institution')
     }), []);
 
     const computeDerived = React.useCallback((store: any) => {
@@ -392,7 +395,7 @@ export default function PaymentsManagementPage() {
                 } else {
                     isProvisional = true;
                     const billingOutput = calculateBilling({
-                        policy: semesterInfo.billingPolicy || 'course',
+                        policy: semesterInfo.billingPolicy || store.institution?.billingPolicy || 'course',
                         semesterTuition: Number(semesterInfo.tuitionFee || 0),
                         courses: getCoursesFromReg(reg.courses).map((cid: string) => ({ id: cid, cost: Number(coursesData[cid]?.cost || 0) })),
                         mandatoryFees: Object.values(semesterInfo.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
@@ -465,6 +468,7 @@ export default function PaymentsManagementPage() {
         const unsubs: (() => void)[] = [];
         const store: any = {};
 
+        unsubs.push(onChildAdded(dataRefs.users, () => computeDerived(store))); // Minimal trigger
         unsubs.push(onValue(dataRefs.users, (snapshot) => { store.users = snapshot.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.registrations, (s) => { store.registrations = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.transactions, (s) => { store.transactions = s.val() || {}; computeDerived(store); }));
@@ -487,6 +491,12 @@ export default function PaymentsManagementPage() {
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.academicCalendar, (s) => { store.academicCalendar = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.scholarships, (s) => { store.scholarships = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.institution, (s) => { 
+            const data = s.val() || { name: 'Edutrack360' };
+            setInstitutionSettings(data);
+            store.institution = data;
+            computeDerived(store);
+        }));
 
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, dataRefs, computeDerived]);
@@ -563,7 +573,7 @@ export default function PaymentsManagementPage() {
             doc.setFontSize(10);
             doc.text(`Receipt Date: ${format(parseISO(tx.paymentDate), 'PPP')}`, 14, 45);
             doc.text(`Transaction ID: ${tx.transactionId}`, 14, 50);
-            doc.text(`Student: ${info.studentName} (${info.id})`, 14, 60);
+            doc.text(`Student: ${info.studentName} (${info.studentId})`, 14, 60);
             doc.text(`Amount: ZMW ${tx.amount.toFixed(2)}`, 14, 65);
             
             const pdfBase64 = generatePdfBlob(doc);
@@ -591,7 +601,7 @@ export default function PaymentsManagementPage() {
             const doc = new jsPDF();
             doc.setFontSize(20); doc.text(institutionSettings.name, 14, 25);
             doc.setFontSize(12); doc.text(`Invoice Statement: ${info.semesterName}`, 14, 35);
-            doc.text(`Student: ${info.studentName} (${info.id})`, 14, 45);
+            doc.text(`Student: ${info.studentName} (${info.studentId})`, 14, 45);
             doc.text(`Current Balance: ZMW ${info.balance.toFixed(2)}`, 14, 55);
             
             const pdfBase64 = generatePdfBlob(doc);
@@ -600,7 +610,7 @@ export default function PaymentsManagementPage() {
                 subject: `Invoice Statement: ${info.semesterName}`,
                 body: `<p>Dear ${info.studentName},</p><p>Please find attached your current invoice statement for ${info.semesterName}.</p><p><strong>Outstanding Balance: ZMW ${info.balance.toFixed(2)}</strong></p><p>Regards,<br/>Finance Department</p>`,
                 attachments: [{
-                    filename: `Invoice_${info.semesterName.replace(/\s+/g, '_')}.pdf`,
+                    filename: `Invoice_${info.semesterName?.replace(/\s+/g, '_')}.pdf`,
                     content: pdfBase64,
                     contentType: 'application/pdf'
                 }]
@@ -1030,7 +1040,7 @@ export default function PaymentsManagementPage() {
                                                 </TableCell>
                                             </TableRow>
                                         ))}
-                                        {selectedDetail?.transactions.length === 0 && (<TableRow><TableCell colSpan={4} className="h-20 text-center text-xs text-muted-foreground italic">No payments recorded for this semester.</TableCell></TableRow>)}
+                                        {selectedDetail?.transactions.length === 0 && (<TableRow><TableCell colSpan={4} className="h-20 text-center text-xs text-muted-foreground italic">No payments recorded for this semester phase.</TableCell></TableRow>)}
                                     </TableBody>
                                 </Table>
                             </div>

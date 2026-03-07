@@ -69,15 +69,16 @@ export default function ScholarshipAssignmentsPage() {
             setIntakes(Object.entries(ints).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
 
             if (usersSnap.exists()) {
-                const data = usersSnap.val();
-                const list = Object.keys(data)
-                    .filter(uid => data[uid].role === 'Student')
+                const usersData = usersSnap.val();
+                const list = Object.keys(usersData)
+                    .filter(uid => usersData[uid].role === 'Student')
                     .map(uid => {
-                        const sId = data[uid].scholarshipId;
+                        const student = usersData[uid];
+                        const sId = student.scholarshipId;
                         return {
                             uid,
-                            ...data[uid],
-                            programmeName: progs[data[uid].programmeId]?.name || 'N/A',
+                            ...student,
+                            programmeName: progs[student.programmeId]?.name || 'N/A',
                             scholarshipName: sId ? schols[sId]?.name : null,
                             scholarshipPercentage: sId ? schols[sId]?.percentage : 0
                         };
