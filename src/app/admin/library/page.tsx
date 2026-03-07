@@ -341,6 +341,18 @@ export default function LibraryPage() {
         }
     };
 
+    const resetForm = () => {
+        setEditingBook(null);
+        setTitle('');
+        setAuthor('');
+        setGenre('');
+        setBarcode('');
+        setYear('');
+        setCount('');
+        setImageUrl('');
+        setImageFile(null);
+    };
+
     const filteredBooks = books.filter(book => 
         book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -444,7 +456,7 @@ export default function LibraryPage() {
                                 <div className="space-y-2">
                                     {scannedBooks.map((b, i) => (
                                         <div key={i} className="flex items-center gap-3 p-2 bg-background border rounded-lg shadow-sm">
-                                            <img src={b.image} className="w-10 h-14 object-cover rounded" alt="Cover"/>
+                                            {b.image && <img src={b.image} className="w-10 h-14 object-cover rounded" alt="Cover"/>}
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-bold text-xs truncate">{b.title}</p>
                                                 <p className="text-[10px] text-muted-foreground truncate">{b.author}</p>
@@ -484,7 +496,7 @@ export default function LibraryPage() {
                                 <div className="flex gap-2">
                                     <Input placeholder="Enter ISBN..." value={lookupIsbn} onChange={e => setLookupIsbn(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), fetchBookByIsbn(lookupIsbn))} className="bg-background font-mono h-10"/>
                                     <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={isScannerActive ? stopScanner : startScanner}>{isScannerActive ? <X className="h-4 w-4" /> : <Camera className="h-4 w-4" />}</Button>
-                                    <Button type="button" size="sm" className="h-10 px-4" onClick={() => fetchBookByIsbn(lookupIsbn)} disabled={isSearchingIsbn || !lookupIsbn}>{isSearchingIsbn ? <Loader2 className="h-4 w-4 animate-spin"/> : <Zap className="h-4 w-4 mr-1.5"/>}Lookup</Button>
+                                    <Button type="button" size="sm" className="h-10 px-4" onClick={() => fetchBookByIsbn(lookupIsbn)} disabled={isSearchingIsbn || !lookupIsbn}>{isSearchingIsbn ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Zap className="mr-2 h-4 w-4 mr-1.5"/>}Lookup</Button>
                                 </div>
                                 {isScannerActive && <div id={SCANNER_ID} className="w-full aspect-[4/3] mt-2 rounded-lg border overflow-hidden bg-black shadow-inner" />}
                             </div>

@@ -27,7 +27,10 @@ import {
     Save,
     Trash2,
     ClipboardCheck,
-    ArrowRight
+    ArrowRight,
+    Mail,
+    Printer,
+    Download
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -67,6 +70,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 
 type FeeBreakdown = {
     tuition: number;
@@ -82,6 +88,7 @@ type StudentPaymentInfo = {
     userId: string;
     studentId: string;
     studentName: string;
+    studentEmail: string;
     totalDue: number;
     totalPaid: number;
     balance: number;
@@ -99,6 +106,7 @@ type StudentPaymentInfo = {
     breakdown: FeeBreakdown;
     transactions: Transaction[];
     paymentPlanName?: string;
+    isCurrentStanding?: boolean;
 };
 
 type PaymentRecord = {
@@ -311,6 +319,7 @@ export default function PaymentsManagementPage() {
         const finData = store.financialSettings || { paymentThreshold: 75 };
         const coursesData = store.courses || {};
         const scholsData = store.scholarships || {};
+        const calSettings = store.academicCalendar || {};
 
         const now = getCurrentServerDate();
 
@@ -338,6 +347,19 @@ export default function PaymentsManagementPage() {
             if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
             const userPool = [...(studentCredits[userId] || [])];
+            
+            // Resolve intake cycle for current standing calculation
+            const intakeName = store.intakes?.[profile.intakeId]?.name;
+            const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
+            let currentStanding: { year: number, semester: number } | null = null;
+            if (intakeStartStr && calSettings) {
+                currentStanding = calculateAcademicState(
+                    intakeStartStr,
+                    now,
+                    calSettings.standardCycles || [],
+                    Object.values(calSettings.anomalies || {})
+                );
+            }
 
             for (const semesterId in regsData[userId]) {
                 const reg = regsData[userId][semesterId];
@@ -393,6 +415,7 @@ export default function PaymentsManagementPage() {
                     };
                 }
 
+                // Match transactions by invoiceId OR semesterId
                 const matchedTransactions = userPool.filter(t => 
                     (reg.invoiceId && t.invoiceId === reg.invoiceId) || 
                     (t.semesterId === semesterId)
@@ -410,8 +433,10 @@ export default function PaymentsManagementPage() {
                 const futureDeadline = semDeadlines.find(ev => isAfter(parseISO(ev.date), now));
                 if (futureDeadline) nextInstallmentDue = futureDeadline.date;
 
+                const isCurrentStanding = !!(currentStanding && semesterInfo.year === currentStanding.year && semesterInfo.semesterInYear === currentStanding.semester);
+
                 studentPaymentMap.set(`${userId}-${semesterId}`, {
-                    userId, studentId: profile.id, studentName: profile.name,
+                    userId, studentId: profile.id, studentName: profile.name, studentEmail: profile.email,
                     totalDue: billingResults.totalDue, totalPaid, balance,
                     programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
                     semesterName: semesterInfo.name, invoiceId: reg.invoiceId,
@@ -421,7 +446,8 @@ export default function PaymentsManagementPage() {
                     nextInstallmentDue,
                     breakdown: billingResults.breakdown,
                     isProvisional,
-                    transactions: matchedTransactions
+                    transactions: matchedTransactions,
+                    isCurrentStanding
                 });
             }
         }
@@ -472,7 +498,12 @@ export default function PaymentsManagementPage() {
                                 p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            const semesterMatch = semesterFilter === 'all' || semesterFilter === 'current' || p.semesterId === semesterFilter;
+            
+            const semesterMatch = semesterFilter === 'all' 
+                ? true 
+                : semesterFilter === 'current' 
+                    ? p.isCurrentStanding 
+                    : p.semesterId === semesterFilter;
             
             let balanceMatch = true;
             if (balanceStatusFilter === 'cleared') balanceMatch = p.balance <= 0.01;
@@ -488,6 +519,99 @@ export default function PaymentsManagementPage() {
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && balanceMatch;
         });
     }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, minBalance, maxBalance, getCurrentServerDate]);
+
+    const generatePdfBlob = (doc: jsPDF) => {
+        return doc.output('datauristring').split('base64,')[1];
+    };
+
+    const handlePrintReceipt = (tx: Transaction, info: StudentPaymentInfo) => {
+        const doc = new jsPDF();
+        if (institutionSettings.logoUrl) {
+            try { 
+                const img = document.createElement('img');
+                img.src = institutionSettings.logoUrl;
+                doc.addImage(img, 'PNG', 14, 15, 20, 20); 
+            } catch (e) {}
+        }
+        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+        doc.setFontSize(14); doc.text('OFFICIAL PAYMENT RECEIPT', 190, 25, { align: 'right' });
+        doc.setFontSize(10);
+        doc.text(`Receipt Date: ${format(parseISO(tx.paymentDate), 'PPP')}`, 190, 35, { align: 'right' });
+        doc.text(`Transaction ID: ${tx.transactionId}`, 190, 40, { align: 'right' });
+        
+        doc.text(`Student Name: ${info.studentName}`, 14, 50);
+        doc.text(`Student ID: ${info.studentId}`, 14, 55);
+        doc.text(`Academic Period: ${info.semesterName}`, 14, 60);
+
+        autoTable(doc, {
+            startY: 70,
+            head: [['Description', 'Payment Method', 'Amount Received']],
+            body: [[`Fee Payment - ${info.semesterName}`, tx.method || 'Cash', `ZMW ${tx.amount.toFixed(2)}`]],
+            theme: 'grid',
+            headStyles: { fillColor: [34, 34, 34] }
+        });
+
+        doc.save(`Receipt_${tx.transactionId}.pdf`);
+    };
+
+    const handleEmailReceipt = async (tx: Transaction, info: StudentPaymentInfo) => {
+        setActionLoading(`email-tx-${tx.key}`);
+        try {
+            const doc = new jsPDF();
+            doc.setFontSize(20); doc.text(institutionSettings.name, 14, 25);
+            doc.setFontSize(14); doc.text('OFFICIAL PAYMENT RECEIPT', 14, 35);
+            doc.setFontSize(10);
+            doc.text(`Receipt Date: ${format(parseISO(tx.paymentDate), 'PPP')}`, 14, 45);
+            doc.text(`Transaction ID: ${tx.transactionId}`, 14, 50);
+            doc.text(`Student: ${info.studentName} (${info.id})`, 14, 60);
+            doc.text(`Amount: ZMW ${tx.amount.toFixed(2)}`, 14, 65);
+            
+            const pdfBase64 = generatePdfBlob(doc);
+            await sendEmail({
+                to: [info.studentEmail],
+                subject: `Payment Receipt: ${tx.transactionId}`,
+                body: `<p>Dear ${info.studentName},</p><p>Please find attached the official receipt for your payment of ZMW ${tx.amount.toFixed(2)}.</p><p>Regards,<br/>Finance Department</p>`,
+                attachments: [{
+                    filename: `Receipt_${tx.transactionId}.pdf`,
+                    content: pdfBase64,
+                    contentType: 'application/pdf'
+                }]
+            });
+            toast({ title: 'Receipt Emailed' });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Email Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleEmailInvoice = async (info: StudentPaymentInfo) => {
+        setActionLoading(`email-inv-${info.userId}`);
+        try {
+            const doc = new jsPDF();
+            doc.setFontSize(20); doc.text(institutionSettings.name, 14, 25);
+            doc.setFontSize(12); doc.text(`Invoice Statement: ${info.semesterName}`, 14, 35);
+            doc.text(`Student: ${info.studentName} (${info.id})`, 14, 45);
+            doc.text(`Current Balance: ZMW ${info.balance.toFixed(2)}`, 14, 55);
+            
+            const pdfBase64 = generatePdfBlob(doc);
+            await sendEmail({
+                to: [info.studentEmail],
+                subject: `Invoice Statement: ${info.semesterName}`,
+                body: `<p>Dear ${info.studentName},</p><p>Please find attached your current invoice statement for ${info.semesterName}.</p><p><strong>Outstanding Balance: ZMW ${info.balance.toFixed(2)}</strong></p><p>Regards,<br/>Finance Department</p>`,
+                attachments: [{
+                    filename: `Invoice_${info.semesterName.replace(/\s+/g, '_')}.pdf`,
+                    content: pdfBase64,
+                    contentType: 'application/pdf'
+                }]
+            });
+            toast({ title: 'Invoice Emailed' });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Email Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -599,7 +723,9 @@ export default function PaymentsManagementPage() {
             setAdjustStudentId(''); setAdjustTargetId(''); setAdjustReason(''); setAdjustNewValue('');
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Action Failed' });
-        } finally { setFormLoading(false); }
+        } finally {
+            setFormLoading(false);
+        }
     };
 
     const studentOptions: OptionGroup[] = React.useMemo(() => {
@@ -712,7 +838,7 @@ export default function PaymentsManagementPage() {
                                 <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Semesters</SelectItem>
-                                    <SelectItem value="current" className="font-bold text-primary">Current Phase</SelectItem>
+                                    <SelectItem value="current" className="font-bold text-primary">Current Phase Only</SelectItem>
                                     <Separator className="my-1"/>
                                     {semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                 </SelectContent>
@@ -774,7 +900,7 @@ export default function PaymentsManagementPage() {
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
                                                 <Button size="sm" variant="ghost" className="h-8 text-primary font-bold hover:bg-primary/10" onClick={() => handleRowPay(info)}><Wallet className="h-3 w-3 mr-1.5"/> Pay</Button>
-                                                <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}><Info className="mr-2 h-4 w-4"/>Financial Audit</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                                                <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}><Info className="mr-2 h-4 w-4"/>Financial Audit</DropdownMenuItem><DropdownMenuItem onClick={() => handleEmailInvoice(info)} disabled={actionLoading === `email-inv-${info.userId}`}><Mail className="mr-2 h-4 w-4"/>Email Invoice</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -889,18 +1015,33 @@ export default function PaymentsManagementPage() {
                             <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2"><History className="h-3 w-3" /> Transaction History</Label>
                             <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
                                 <Table>
-                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Ref</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead></TableRow></TableHeader>
+                                    <TableHeader><TableRow className="bg-muted/50"><TableHead className="h-8 text-[10px]">Date</TableHead><TableHead className="h-8 text-[10px]">Ref</TableHead><TableHead className="h-8 text-[10px] text-right">Credit</TableHead><TableHead className="h-8 text-[10px] text-right"></TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {selectedDetail?.transactions.map((tx, i) => (
-                                            <TableRow key={i}><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell><TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell></TableRow>
+                                            <TableRow key={i}>
+                                                <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                <TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell>
+                                                <TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrintReceipt(tx, selectedDetail)}><Printer className="h-3.5 w-3.5"/></Button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEmailReceipt(tx, selectedDetail)} disabled={actionLoading === `email-tx-${tx.key}`}><Mail className="h-3.5 w-3.5"/></Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
                                         ))}
-                                        {selectedDetail?.transactions.length === 0 && (<TableRow><TableCell colSpan={3} className="h-20 text-center text-xs text-muted-foreground italic">No payments recorded for this semester.</TableCell></TableRow>)}
+                                        {selectedDetail?.transactions.length === 0 && (<TableRow><TableCell colSpan={4} className="h-20 text-center text-xs text-muted-foreground italic">No payments recorded for this semester.</TableCell></TableRow>)}
                                     </TableBody>
                                 </Table>
                             </div>
                         </section>
                     </div>
-                    <DialogFooter><DialogClose asChild><Button variant="outline">Close Audit</Button></DialogClose></DialogFooter>
+                    <DialogFooter className="flex items-center justify-between border-t pt-4">
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => selectedDetail && handleEmailInvoice(selectedDetail)} disabled={actionLoading === `email-inv-${selectedDetail?.userId}`}><Mail className="mr-2 h-4 w-4"/>Email Statement</Button>
+                        </div>
+                        <DialogClose asChild><Button variant="outline">Close Audit</Button></DialogClose>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
