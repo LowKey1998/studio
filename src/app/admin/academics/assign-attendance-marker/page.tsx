@@ -181,7 +181,7 @@ export default function AssignAttendanceMarkerPage() {
                                 ...entry
                             });
                         });
-                    });
+                    }
                 }
                 setMasterTimetable(entries);
 
