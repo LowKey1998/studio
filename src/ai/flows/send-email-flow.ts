@@ -44,33 +44,33 @@ export const sendEmailFlow = ai.defineFlow(
     const smtpConfig = settingsSnap.val();
 
     if (!smtpConfig.user || !smtpConfig.pass) {
-        throw new Error('SMTP user and password/key must be configured.');
+      throw new Error('SMTP user and password/key must be configured.');
     }
 
     let transporter;
     // Check if it's a Gmail address to use the simplified service config
     if (smtpConfig.user.endsWith('@gmail.com')) {
-        transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: smtpConfig.user,
-                pass: smtpConfig.pass,
-            },
-        });
+      transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: smtpConfig.user,
+          pass: smtpConfig.pass,
+        },
+      });
     } else {
-        // Fallback to generic SMTP for other providers
-        if (!smtpConfig.host || !smtpConfig.port) {
-            throw new Error('SMTP host and port must be configured for non-Gmail providers.');
-        }
-         transporter = nodemailer.createTransport({
-            host: smtpConfig.host,
-            port: smtpConfig.port,
-            secure: smtpConfig.port === 465, // true for 465, false for other ports
-            auth: {
-                user: smtpConfig.user,
-                pass: smtpConfig.pass,
-            },
-        });
+      // Fallback to generic SMTP for other providers
+      if (!smtpConfig.host || !smtpConfig.port) {
+        throw new Error('SMTP host and port must be configured for non-Gmail providers.');
+      }
+      transporter = nodemailer.createTransport({
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        secure: smtpConfig.port === 465, // true for 465, false for other ports
+        auth: {
+          user: smtpConfig.user,
+          pass: smtpConfig.pass,
+        },
+      });
     }
 
 
@@ -91,20 +91,20 @@ export const sendEmailFlow = ai.defineFlow(
       });
 
       if (log) {
-          const logRef = push(ref(db, 'communicationLogs'));
-          await set(logRef, {
-              type: 'Email',
-              recipients: userIds || to,
-              subject,
-              body,
-              timestamp: new Date().toISOString()
-          });
+        const logRef = push(ref(db, 'communicationLogs'));
+        await set(logRef, {
+          type: 'Email',
+          recipients: userIds || to,
+          subject,
+          body,
+          timestamp: new Date().toISOString()
+        });
       }
 
       return { result: `Successfully sent email to ${to.length} recipients. Message ID: ${info.messageId}` };
     } catch (error: any) {
-        console.error("Failed to send email:", error);
-        throw new Error(`Failed to send email: ${error.message}`);
+      console.error("Failed to send email:", error);
+      throw new Error(`Failed to send email: ${error.message}`);
     }
   }
 );

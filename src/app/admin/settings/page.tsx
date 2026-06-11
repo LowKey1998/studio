@@ -74,6 +74,7 @@ type EmailTemplates = {
     idChange: EmailTemplate;
     emailChange: EmailTemplate;
     credentials: EmailTemplate;
+    attendanceMarker?: EmailTemplate;
 };
 
 const studentSidebarCategories = [
@@ -122,6 +123,7 @@ export default function SettingsPage() {
         idChange: { subject: 'System ID Change Notification', body: '<p>Hello [Name],</p><p>Your User ID has been changed from [OldID] to [UserID].</p>', enabled: true },
         emailChange: { subject: 'Account Email Change', body: '<p>Hello [Name],</p><p>Your portal login email has been updated to [NewEmail].</p>', enabled: true },
         credentials: { subject: 'Your Portal Login Details', body: '<p>Hello [Name],</p><p>Access your portal using the credentials below:</p><p>URL: [Link]</p><p>UserID: [UserID]</p>', enabled: true },
+        attendanceMarker: { subject: 'Attendance Marker Assignment: [CourseName]', body: `<h2>Attendance Marker Privilege Assigned</h2>\n<p>Hello <strong>[Name]</strong>,</p>\n<p>You have been assigned as the attendance marker for the class <strong>[CourseName] ([CourseCode])</strong>.</p>\n<p><strong>Privilege Details:</strong></p>\n<ul>\n  <li><strong>Mark on exact class day only:</strong> [ExactDayOnlyText]</li>\n</ul>\n<p>Please log in to your student portal and navigate to <strong>Academics -> Mark Attendance</strong> to view your roster and record attendance for this class.</p>\n<p>Best regards,<br/>The Academics Department</p>`, enabled: true },
     });
 
     const [isDeptDialogOpen, setIsDeptDialogOpen] = React.useState(false);
@@ -574,6 +576,18 @@ export default function SettingsPage() {
                                 </div>
                                 <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.emailChange.subject} onChange={e => handleTemplateChange('emailChange', 'subject', e.target.value)} /></div>
                                 <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.emailChange.body} onChange={e => handleTemplateChange('emailChange', 'body', e.target.value)} rows={10} className="font-mono text-xs" /></div>
+                            </AccordionContent>
+                        </AccordionItem>
+                        
+                        <AccordionItem value="attendance-marker-tpl">
+                            <AccordionTrigger className="font-bold flex gap-2"><Mail className="h-4 w-4"/>Attendance Marker Assignment</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
+                                    <div className="space-y-0.5"><Label>Enable Notification</Label><p className="text-xs text-muted-foreground">Send automatically when a student is assigned attendance marker privilege.</p></div>
+                                    <Switch checked={emailTemplates.attendanceMarker?.enabled !== false} onCheckedChange={val => handleTemplateChange('attendanceMarker', 'enabled', val)} />
+                                </div>
+                                <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.attendanceMarker?.subject || ''} onChange={e => handleTemplateChange('attendanceMarker', 'subject', e.target.value)} /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.attendanceMarker?.body || ''} onChange={e => handleTemplateChange('attendanceMarker', 'body', e.target.value)} rows={10} className="font-mono text-xs" /></div>
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>

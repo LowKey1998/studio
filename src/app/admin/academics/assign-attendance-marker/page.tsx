@@ -72,7 +72,7 @@ export default function AssignAttendanceMarkerPage() {
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [selectedSession, setSelectedSession] = React.useState<TimetableEntry | null>(null);
     const [studentSearch, setStudentSearch] = React.useState('');
-    
+
     // Email Template Modal
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
     const [savingTemplate, setSavingTemplate] = React.useState(false);
@@ -95,7 +95,7 @@ export default function AssignAttendanceMarkerPage() {
             timetables: ref(db, 'timetables'),
             calendar: ref(db, 'settings/academicCalendar'),
             markers: ref(db, 'settings/attendanceMarkers'),
-            template: ref(db, 'settings/attendanceMarkerEmailTemplate'),
+            template: ref(db, 'settings/emailTemplates/attendanceMarker'),
             registrations: ref(db, 'registrations')
         };
 
@@ -218,9 +218,9 @@ export default function AssignAttendanceMarkerPage() {
     // Find active semester matching intake standing
     const activeSemester = React.useMemo(() => {
         if (!selectedIntake || !intakeStanding) return null;
-        return semesters.find(s => 
-            s.intakeId === selectedIntake && 
-            s.year === intakeStanding.year && 
+        return semesters.find(s =>
+            s.intakeId === selectedIntake &&
+            s.year === intakeStanding.year &&
             s.semesterInYear === intakeStanding.semester
         );
     }, [selectedIntake, intakeStanding, semesters]);
@@ -234,10 +234,10 @@ export default function AssignAttendanceMarkerPage() {
             const userRegs = registrations[userId];
             const activeReg = userRegs[activeSemester.id];
             if (activeReg && activeReg.courses) {
-                const coursesList = Array.isArray(activeReg.courses) 
-                    ? activeReg.courses 
+                const coursesList = Array.isArray(activeReg.courses)
+                    ? activeReg.courses
                     : Object.keys(activeReg.courses);
-                
+
                 if (coursesList.includes(selectedSession.courseId) && (activeReg.status === 'Completed' || activeReg.status === 'Pending Payment')) {
                     const student = allStudents.find(s => s.uid === userId);
                     if (student) {
@@ -251,7 +251,7 @@ export default function AssignAttendanceMarkerPage() {
 
     // Filter enrolled students by search
     const filteredStudents = React.useMemo(() => {
-        return enrolledStudents.filter(s => 
+        return enrolledStudents.filter(s =>
             s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
             s.id.toLowerCase().includes(studentSearch.toLowerCase())
         );
@@ -261,8 +261,8 @@ export default function AssignAttendanceMarkerPage() {
     const getMarkerPathKey = () => {
         if (!selectedSession || !activeSemester) return '';
         const courseObj = courses.find(c => c.id === selectedSession.courseId);
-        return (courseObj?.separateInstance && activeSemester) 
-            ? `${selectedSession.courseId}_${activeSemester.id}` 
+        return (courseObj?.separateInstance && activeSemester)
+            ? `${selectedSession.courseId}_${activeSemester.id}`
             : selectedSession.courseId;
     };
 
@@ -270,7 +270,7 @@ export default function AssignAttendanceMarkerPage() {
     const handleSaveTemplate = async () => {
         setSavingTemplate(true);
         try {
-            await set(ref(db, 'settings/attendanceMarkerEmailTemplate'), emailTemplate);
+            await set(ref(db, 'settings/emailTemplates/attendanceMarker'), emailTemplate);
             toast({ title: 'Template Saved Successfully' });
             setIsTemplateModalOpen(false);
         } catch (e: any) {
@@ -406,7 +406,7 @@ export default function AssignAttendanceMarkerPage() {
                     <AlertTriangle className="h-4 w-4 text-orange-600" />
                     <AlertTitle className="font-bold text-orange-800">No Active Semester</AlertTitle>
                     <AlertDescription className="text-orange-700 text-sm">
-                        No active semester record found for <strong>{intakes.find(i=>i.id===selectedIntake)?.name}</strong> at <strong>Year {intakeStanding?.year}, Sem {intakeStanding?.semester}</strong>. 
+                        No active semester record found for <strong>{intakes.find(i => i.id === selectedIntake)?.name}</strong> at <strong>Year {intakeStanding?.year}, Sem {intakeStanding?.semester}</strong>.
                         Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
                     </AlertDescription>
                 </Alert>
@@ -438,15 +438,15 @@ export default function AssignAttendanceMarkerPage() {
                                                 {day}
                                             </TableCell>
                                             {teachingTimes.slots.map((slot, sIdx) => {
-                                                const start = timeToMinutes(slot.startTime); 
+                                                const start = timeToMinutes(slot.startTime);
                                                 const end = timeToMinutes(slot.endTime);
-                                                const sessions = masterTimetable.filter(e => 
-                                                    e.semesterId === activeSemester.id && 
-                                                    e.day === day && 
-                                                    timeToMinutes(e.startTime) >= start && 
+                                                const sessions = masterTimetable.filter(e =>
+                                                    e.semesterId === activeSemester.id &&
+                                                    e.day === day &&
+                                                    timeToMinutes(e.startTime) >= start &&
                                                     timeToMinutes(e.startTime) < end
                                                 );
-                                                
+
                                                 // Deduplicate sessions that might be repeated across semester nodes
                                                 const uniqueSessions = sessions.reduce((acc, current) => {
                                                     const key = `${current.courseId}-${current.day}-${current.startTime}-${current.venue}`;
@@ -461,21 +461,21 @@ export default function AssignAttendanceMarkerPage() {
                                                         {uniqueSessions.map(entry => {
                                                             const courseObj = courses.find(c => c.id === entry.courseId);
                                                             const compositeKey = `${entry.semesterId}-${entry.courseId}-${entry.id}`;
-                                                            
+
                                                             const currentMarkerKey = (courseObj?.separateInstance) ? `${entry.courseId}_${activeSemester.id}` : entry.courseId;
                                                             const markersList = attendanceMarkers[currentMarkerKey] || {};
                                                             const markersCount = Object.values(markersList).filter(m => m.enabled).length;
 
                                                             return (
-                                                                <div 
-                                                                    key={compositeKey} 
+                                                                <div
+                                                                    key={compositeKey}
                                                                     className={cn(
                                                                         "cursor-pointer p-2.5 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2 shadow-sm relative",
                                                                         selectedSession?.id === entry.id && "ring-2 ring-primary"
-                                                                    )} 
-                                                                    onClick={() => { 
-                                                                        setSelectedSession(entry); 
-                                                                        setStudentSearch(''); 
+                                                                    )}
+                                                                    onClick={() => {
+                                                                        setSelectedSession(entry);
+                                                                        setStudentSearch('');
                                                                     }}
                                                                 >
                                                                     <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>
@@ -519,11 +519,11 @@ export default function AssignAttendanceMarkerPage() {
                     <div className="flex-1 overflow-hidden py-4 flex flex-col gap-4">
                         <div className="relative max-w-sm">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                                placeholder="Search enrolled student roster..." 
-                                className="pl-8" 
-                                value={studentSearch} 
-                                onChange={e => setStudentSearch(e.target.value)} 
+                            <Input
+                                placeholder="Search enrolled student roster..."
+                                className="pl-8"
+                                value={studentSearch}
+                                onChange={e => setStudentSearch(e.target.value)}
                             />
                         </div>
 
@@ -555,9 +555,9 @@ export default function AssignAttendanceMarkerPage() {
                                                             {actionLoading === student.uid ? (
                                                                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                                             ) : (
-                                                                <Switch 
-                                                                    checked={isMarker} 
-                                                                    onCheckedChange={(checked) => handleTogglePrivilege(student, checked)} 
+                                                                <Switch
+                                                                    checked={isMarker}
+                                                                    onCheckedChange={(checked) => handleTogglePrivilege(student, checked)}
                                                                 />
                                                             )}
                                                         </div>
@@ -567,10 +567,10 @@ export default function AssignAttendanceMarkerPage() {
                                                             {actionLoading === student.uid + '_day' ? (
                                                                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                                             ) : (
-                                                                <Switch 
+                                                                <Switch
                                                                     disabled={!isMarker}
-                                                                    checked={isExactDayOnly} 
-                                                                    onCheckedChange={(checked) => handleToggleExactDay(student, checked)} 
+                                                                    checked={isExactDayOnly}
+                                                                    onCheckedChange={(checked) => handleToggleExactDay(student, checked)}
                                                                 />
                                                             )}
                                                         </div>
@@ -612,21 +612,21 @@ export default function AssignAttendanceMarkerPage() {
 
                         <div className="space-y-1">
                             <Label htmlFor="tpl-subject">Email Subject</Label>
-                            <Input 
+                            <Input
                                 id="tpl-subject"
-                                value={emailTemplate.subject} 
-                                onChange={e => setEmailTemplate(p => ({ ...p, subject: e.target.value }))} 
+                                value={emailTemplate.subject}
+                                onChange={e => setEmailTemplate(p => ({ ...p, subject: e.target.value }))}
                             />
                         </div>
 
                         <div className="space-y-1">
                             <Label htmlFor="tpl-body">Email Body (HTML)</Label>
-                            <Textarea 
+                            <Textarea
                                 id="tpl-body"
-                                rows={10} 
+                                rows={10}
                                 className="font-mono text-xs"
-                                value={emailTemplate.body} 
-                                onChange={e => setEmailTemplate(p => ({ ...p, body: e.target.value }))} 
+                                value={emailTemplate.body}
+                                onChange={e => setEmailTemplate(p => ({ ...p, body: e.target.value }))}
                             />
                         </div>
                     </div>
