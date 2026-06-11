@@ -46,6 +46,7 @@ export const allMenuItems = [
       items: [
         { href: '/admin/registration-management', label: 'Registration Management', icon: Settings, notificationKey: 'missingDeadlines' },
         { href: '/admin/academics/mark-attendance', label: 'Mark Attendance', icon: ClipboardCheck },
+        { href: '/admin/academics/assign-attendance-marker', label: 'Assign Attendance Marker', icon: UserCheckIcon },
         { href: '/admin/academics/student-absences', label: 'Student Absence Approvals', icon: ClipboardCheck },
         { href: '/admin/academics/semester-setup', label: 'Academic Calendar Rules', icon: CalendarDays },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
@@ -361,6 +362,7 @@ export const studentMenuItems = [
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
             { href: '/student/exams/timetable', label: 'Exam Timetable', icon: FileCheck },
             { href: '/student/attendance', label: 'My Attendance', icon: Hand },
+            { href: '/student/attendance/mark-attendance', label: 'Mark Attendance', icon: ClipboardCheck },
             { href: '/student/leave', label: 'Request Absence', icon: Calendar },
             { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
             { href: '/student/resources', label: 'Resources', icon: FileText },
