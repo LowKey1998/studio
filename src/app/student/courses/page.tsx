@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, CalendarDays, UserCheck, Clock, AlertCircle, BookCopy, CheckCircle2 } from "lucide-react";
+import { ChevronRight, Info, CalendarDays, UserCheck, Clock, AlertCircle, BookCopy, CheckCircle2, Users } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { differenceInCalendarDays, parseISO, isBefore, startOfDay, format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 type Course = {
     id: string;
@@ -27,6 +28,13 @@ type Course = {
         earliestDueDate: string | null;
     };
     hasResultsPublished?: boolean;
+    studentCount: number;
+    assignments: {
+        title: string;
+        dueDate: string;
+        isSubmitted: boolean;
+        isOverdue: boolean;
+    }[];
 };
 
 export default function StudentCoursesPage() {
@@ -54,8 +62,8 @@ export default function StudentCoursesPage() {
         setLoading(true);
         try {
             const [usersSnap, regsSnap, semestersSnap, coursesSnap, intakesSnap, calendarSnap, assignmentsSnap, resultsSnap] = await Promise.all([
-                get(ref(db, `users/${currentUser.uid}`)),
-                get(ref(db, `registrations/${currentUser.uid}`)),
+                get(ref(db, 'users')),
+                get(ref(db, 'registrations')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'intakes')),
@@ -64,7 +72,8 @@ export default function StudentCoursesPage() {
                 get(ref(db, 'resultsPublished'))
             ]);
 
-            const userProfile = usersSnap.val();
+            const allUsers = usersSnap.val() || {};
+            const userProfile = allUsers[currentUser.uid];
             if (!userProfile) throw new Error("Profile not found");
             
             const studentIntakeId = userProfile.intakeId;
@@ -87,14 +96,15 @@ export default function StudentCoursesPage() {
 
             const allSemesters = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
-            const usersData = usersSnap.val() || {};
+            const usersData = allUsers;
             const allAssignments = assignmentsSnap.val() || {};
             const allResultsPublished = resultsSnap.val() || {};
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
             const activeCourses: Course[] = [];
-            const registrationsData = regsSnap.val() || {};
+            const allRegistrations = regsSnap.val() || {};
+            const registrationsData = allRegistrations[currentUser.uid] || {};
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
@@ -121,22 +131,43 @@ export default function StudentCoursesPage() {
                         let soon = 0;
                         let late = 0;
                         let earliestDueDate = null;
+                        const assignmentsList: any[] = [];
 
                         Object.values(courseAssignments).forEach((a: any) => {
-                            if (a.submissions?.[currentUser.uid]) return; 
-                            
+                            const isSubmitted = !!a.submissions?.[currentUser.uid];
                             const dueDate = parseISO(a.dueDate);
                             const today = startOfDay(new Date());
                             const diff = differenceInCalendarDays(dueDate, today);
+                            const isOverdue = isBefore(dueDate, today) && !isSubmitted;
 
-                            if (isBefore(dueDate, today)) {
-                                late++;
-                            } else if (diff <= 3) {
-                                soon++;
+                            if (!isSubmitted) {
+                                if (isBefore(dueDate, today)) {
+                                    late++;
+                                } else if (diff <= 3) {
+                                    soon++;
+                                }
                             }
 
                             if (!earliestDueDate || isBefore(dueDate, parseISO(earliestDueDate))) {
                                 earliestDueDate = a.dueDate;
+                            }
+
+                            assignmentsList.push({
+                                title: a.title,
+                                dueDate: a.dueDate,
+                                isSubmitted,
+                                isOverdue
+                            });
+                        });
+
+                        let studentCount = 0;
+                        Object.entries(allRegistrations).forEach(([studentUid, studentRegs]: [string, any]) => {
+                            const semReg = studentRegs[semesterId];
+                            if (semReg && (semReg.status === 'Completed' || semReg.status === 'Pending Payment')) {
+                                const coursesList = Array.isArray(semReg.courses) ? semReg.courses : Object.keys(semReg.courses || {});
+                                if (coursesList.includes(courseId)) {
+                                    studentCount++;
+                                }
                             }
                         });
 
@@ -148,7 +179,9 @@ export default function StudentCoursesPage() {
                             semesterId: semesterId,
                             semesterName: semesterInfo.name,
                             assignmentStatus: { soon, late, earliestDueDate },
-                            hasResultsPublished: !!allResultsPublished[semesterId]?.[courseId]
+                            hasResultsPublished: !!allResultsPublished[semesterId]?.[courseId],
+                            studentCount,
+                            assignments: assignmentsList
                         });
                     }
                 }
@@ -215,24 +248,56 @@ export default function StudentCoursesPage() {
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="flex items-start text-sm text-muted-foreground">
-                                    <UserCheck className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
-                                    <span className="line-clamp-2">{course.lecturerName}</span>
+                                <div className="flex items-start text-xs text-muted-foreground">
+                                    <UserCheck className="mr-2 h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                                    <span className="line-clamp-2">Lecturer(s): <strong>{course.lecturerName}</strong></span>
+                                </div>
+
+                                <div className="flex items-center text-xs text-muted-foreground">
+                                    <Users className="mr-2 h-4 w-4 shrink-0 text-primary" />
+                                    <span>Enrolled: <strong>{course.studentCount} students</strong></span>
                                 </div>
 
                                 {(course.assignmentStatus?.late || 0) > 0 && (
                                     <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-[10px] font-bold">
                                         <AlertCircle className="h-4 w-4" />
-                                        <span>{course.assignmentStatus?.late} OVERDUE (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
+                                        <span>{course.assignmentStatus?.late} OVERDUE ASSIGNMENTS</span>
                                     </div>
                                 )}
 
                                 {(course.assignmentStatus?.soon || 0) > 0 && (
                                     <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-bold">
                                         <Clock className="h-4 w-4" />
-                                        <span>{course.assignmentStatus?.soon} PENDING (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
+                                        <span>{course.assignmentStatus?.soon} PENDING ASSIGNMENTS</span>
                                     </div>
                                 )}
+
+                                <div className="space-y-1.5 pt-2 border-t border-dashed">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Assignments & Deadlines</span>
+                                    {course.assignments && course.assignments.length > 0 ? (
+                                        <div className="space-y-1">
+                                            {course.assignments.map((ass, i) => (
+                                                <div key={i} className="flex justify-between items-center text-xs p-1 rounded hover:bg-muted/30">
+                                                    <span className="truncate max-w-[150px] font-medium" title={ass.title}>{ass.title}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={cn("text-[10px] font-mono", ass.isOverdue ? "text-red-500 font-bold" : ass.isSubmitted ? "text-green-600" : "text-muted-foreground")}>
+                                                            {format(parseISO(ass.dueDate), 'MMM dd')}
+                                                        </span>
+                                                        {ass.isSubmitted ? (
+                                                            <Badge className="h-3.5 text-[8px] px-1 bg-green-100 text-green-700 hover:bg-green-100 border-green-200 uppercase font-black">Done</Badge>
+                                                        ) : ass.isOverdue ? (
+                                                            <Badge variant="destructive" className="h-3.5 text-[8px] px-1 bg-red-100 text-red-700 hover:bg-red-100 border-red-200 uppercase font-black">Late</Badge>
+                                                        ) : (
+                                                            <Badge variant="outline" className="h-3.5 text-[8px] px-1 uppercase font-black">Pending</Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-[10px] text-muted-foreground italic pl-1">No assignments assigned.</p>
+                                    )}
+                                </div>
                             </CardContent>
                             <CardFooter>
                                 <Button asChild className="w-full">

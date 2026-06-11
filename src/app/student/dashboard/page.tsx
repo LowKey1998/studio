@@ -78,6 +78,8 @@ export default function StudentDashboardPage() {
     const [loading, setLoading] = React.useState(true);
     const [enrolledCourses, setEnrolledCourses] = React.useState<Course[]>([]);
     const [attendanceRate, setAttendanceRate] = React.useState(0);
+    const [attendancePresent, setAttendancePresent] = React.useState(0);
+    const [attendanceMarked, setAttendanceMarked] = React.useState(0);
     const [feeBalance, setFeeBalance] = React.useState(0);
     const [currentSemesterFinance, setCurrentSemesterFinance] = React.useState<{
         due: number;
@@ -119,7 +121,7 @@ export default function StudentDashboardPage() {
         const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap, pathsSnap, scholsSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap, pathsSnap, scholsSnap, overduePolicySnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
                 get(ref(db, 'intakes')),
@@ -135,7 +137,8 @@ export default function StudentDashboardPage() {
                 get(ref(db, 'assignments')),
                 get(ref(db, 'settings/assessmentTemplates')),
                 get(ref(db, 'coursePaths')),
-                get(ref(db, 'scholarships'))
+                get(ref(db, 'scholarships')),
+                get(ref(db, 'settings/overduePolicy'))
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -149,7 +152,9 @@ export default function StudentDashboardPage() {
             const allAssessments = assSnap.val() || {};
             const calSettings = settingsSnap.val() || {};
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
-            setFinancialSettings(fSettings);
+            const overduePolicy = overduePolicySnap.val() || 'doNothing';
+            const mergedSettings = { ...fSettings, overduePolicy };
+            setFinancialSettings(mergedSettings);
             const allSemesters = semSnap.val() || {};
             const allAssignments = studentAssSnap.val() || {};
             const allTemplates = templatesSnap.val() || {};
@@ -262,6 +267,8 @@ export default function StudentDashboardPage() {
                 }
             }
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
+            setAttendancePresent(totalPresent);
+            setAttendanceMarked(totalMarked);
 
             let totalDueOverall = 0;
             Object.values(allInvoices).forEach((inv: any) => {
@@ -327,7 +334,9 @@ export default function StudentDashboardPage() {
                     }
 
                     const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(getCurrentServerDate(), addDays(parseISO(ev.date), grace)));
-                    if (passedDeadlines.length > 0) {
+                    if (overduePolicy === 'doNothing') {
+                        setFinancialWarning(null);
+                    } else if (passedDeadlines.length > 0) {
                         const paidPercentage = due > 0 ? (paid / due) * 100 : 100;
                         if (paidPercentage < threshold) {
                             setFinancialWarning({
@@ -588,15 +597,50 @@ export default function StudentDashboardPage() {
                     </Card>
                 )}
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Overall Attendance</CardTitle><TrendingUp className="h-4 w-4 text-primary" /></CardHeader>
-                    <CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Overall Attendance</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent className="space-y-2">
                         <div className="text-2xl font-black">{attendanceRate.toFixed(0)}%</div>
-                        <Progress value={attendanceRate} className="h-1 mt-2" />
+                        <Progress value={attendanceRate} className="h-1 mt-1" />
+                        <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1 border-t border-dashed">
+                            <span>Present: <strong>{attendancePresent}</strong></span>
+                            <span>Absent: <strong>{attendanceMarked - attendancePresent}</strong></span>
+                            <span>Total: <strong>{attendanceMarked}</strong></span>
+                        </div>
                     </CardContent>
                 </Card>
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Active Courses</CardTitle><BookOpen className="h-4 w-4 text-primary" /></CardHeader>
-                    <CardContent><div className="text-2xl font-black">{enrolledCourses.length}</div></CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
+                        <BookOpen className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <div>
+                            <div className="text-2xl font-black">{enrolledCourses.length}</div>
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                {enrolledCourses.map(c => (
+                                    <Badge key={c.id} variant="secondary" className="text-[9px] font-mono font-bold px-1.5 py-0">
+                                        {c.code}
+                                    </Badge>
+                                ))}
+                                {enrolledCourses.length === 0 && (
+                                    <span className="text-[10px] text-muted-foreground italic">No enrolled courses</span>
+                                )}
+                            </div>
+                        </div>
+                        {enrolledCourses.length > 0 && (() => {
+                            const totalLate = enrolledCourses.reduce((sum, c) => sum + (c.assignmentAlert?.type === 'late' ? c.assignmentAlert.count : 0), 0);
+                            const totalSoon = enrolledCourses.reduce((sum, c) => sum + (c.assignmentAlert?.type === 'soon' ? c.assignmentAlert.count : 0), 0);
+                            return (
+                                <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1 border-t border-dashed">
+                                    <span>Late Tasks: <strong className={cn(totalLate > 0 && "text-red-500")}>{totalLate}</strong></span>
+                                    <span>Due Soon: <strong className={cn(totalSoon > 0 && "text-amber-500")}>{totalSoon}</strong></span>
+                                </div>
+                            );
+                        })()}
+                    </CardContent>
                 </Card>
             </div>
 

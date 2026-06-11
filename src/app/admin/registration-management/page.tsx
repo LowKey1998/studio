@@ -1011,7 +1011,7 @@ export default function RegistrationManagementPage() {
                                                             />
                                                         </div>
 
-                                                        <ScrollArea className="flex-1 border rounded-lg p-1 bg-muted/10">
+                                                        <ScrollArea className="h-[450px] border rounded-lg p-1 bg-muted/10">
                                                             <div className="p-2 space-y-2">
                                                                 {(() => {
                                                                     if (!viewingSemesterStudents) return null;
