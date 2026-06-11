@@ -72,6 +72,7 @@ export default function AssignAttendanceMarkerPage() {
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [selectedSession, setSelectedSession] = React.useState<TimetableEntry | null>(null);
     const [studentSearch, setStudentSearch] = React.useState('');
+    const [showMarkersOnly, setShowMarkersOnly] = React.useState(false);
 
     // Email Template Modal
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
@@ -249,22 +250,29 @@ export default function AssignAttendanceMarkerPage() {
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }, [activeSemester, selectedSession, registrations, allStudents]);
 
-    // Filter enrolled students by search
-    const filteredStudents = React.useMemo(() => {
-        return enrolledStudents.filter(s =>
-            s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-            s.id.toLowerCase().includes(studentSearch.toLowerCase())
-        );
-    }, [enrolledStudents, studentSearch]);
-
     // Format marker settings path key matching student side pathing
-    const getMarkerPathKey = () => {
+    const pathKey = React.useMemo(() => {
         if (!selectedSession || !activeSemester) return '';
         const courseObj = courses.find(c => c.id === selectedSession.courseId);
         return (courseObj?.separateInstance && activeSemester)
             ? `${selectedSession.courseId}_${activeSemester.id}`
             : selectedSession.courseId;
-    };
+    }, [selectedSession, activeSemester, courses]);
+
+    // Filter enrolled students by search and marker toggle
+    const filteredStudents = React.useMemo(() => {
+        return enrolledStudents.filter(s => {
+            const matchesSearch = s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+                s.id.toLowerCase().includes(studentSearch.toLowerCase());
+            if (!matchesSearch) return false;
+
+            if (showMarkersOnly) {
+                const settings = attendanceMarkers[pathKey]?.[s.uid];
+                return !!settings?.enabled;
+            }
+            return true;
+        });
+    }, [enrolledStudents, studentSearch, showMarkersOnly, attendanceMarkers, pathKey]);
 
     // Save Email Template
     const handleSaveTemplate = async () => {
@@ -282,7 +290,6 @@ export default function AssignAttendanceMarkerPage() {
 
     // Toggle Attendance Marker Privilege
     const handleTogglePrivilege = async (student: Student, isChecked: boolean) => {
-        const pathKey = getMarkerPathKey();
         if (!pathKey || !selectedSession || !activeSemester) return;
 
         setActionLoading(student.uid);
@@ -339,7 +346,6 @@ export default function AssignAttendanceMarkerPage() {
 
     // Toggle Exact Day Only Restriction
     const handleToggleExactDay = async (student: Student, isChecked: boolean) => {
-        const pathKey = getMarkerPathKey();
         if (!pathKey) return;
 
         setActionLoading(student.uid + '_day');
@@ -365,7 +371,6 @@ export default function AssignAttendanceMarkerPage() {
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const hasSlots = teachingTimes.slots.length > 0;
-    const pathKey = getMarkerPathKey();
 
     return (
         <div className="space-y-6">
@@ -517,14 +522,26 @@ export default function AssignAttendanceMarkerPage() {
                     </DialogHeader>
 
                     <div className="flex-1 overflow-hidden py-4 flex flex-col gap-4">
-                        <div className="relative max-w-sm">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search enrolled student roster..."
-                                className="pl-8"
-                                value={studentSearch}
-                                onChange={e => setStudentSearch(e.target.value)}
-                            />
+                        <div className="flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
+                            <div className="relative w-full sm:w-80">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search enrolled student roster..."
+                                    className="pl-8"
+                                    value={studentSearch}
+                                    onChange={e => setStudentSearch(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-muted/20">
+                                <Switch
+                                    id="show-markers-toggle"
+                                    checked={showMarkersOnly}
+                                    onCheckedChange={setShowMarkersOnly}
+                                />
+                                <Label htmlFor="show-markers-toggle" className="text-xs font-bold cursor-pointer">
+                                    Show assigned markers only
+                                </Label>
+                            </div>
                         </div>
 
                         {filteredStudents.length > 0 ? (

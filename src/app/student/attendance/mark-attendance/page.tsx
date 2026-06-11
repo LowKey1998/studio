@@ -480,7 +480,7 @@ export default function StudentMarkAttendancePage() {
                                     <p><strong>Selected Day of Week:</strong> {dayName}</p>
                                     {markerSettings?.exactDayOnly ? (
                                         <p className="text-orange-700 font-bold">
-                                            ℹ️ Admin restriction active: You can only record attendance on the exact scheduled class day (which must be today, {serverTodayName}).
+                                            ℹ️ Admin restriction active: You can only record attendance on the exact scheduled class day {scheduledDays.includes(serverTodayName) ? `(which is today, ${serverTodayName})` : `(which is scheduled on ${scheduledDays.join(', ')})`}.
                                         </p>
                                     ) : (
                                         <p className="text-muted-foreground font-medium">

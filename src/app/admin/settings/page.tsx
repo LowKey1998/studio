@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, PlusCircle, Trash2, KeyRound, Mail, Percent, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, LayoutGrid, ShieldAlert, Lock, Stethoscope } from 'lucide-react';
+import { Loader2, Save, PlusCircle, Trash2, KeyRound, Mail, Percent, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, LayoutGrid, ShieldAlert, Lock, Stethoscope, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import NextLink from 'next/link';
 
 type IDPrefixes = { 
     student: string; 
@@ -256,6 +257,24 @@ export default function SettingsPage() {
 
     return (
         <form onSubmit={handleSaveChanges} className="space-y-6 pb-12">
+            <Card className="shadow-lg border-l-4 border-l-primary">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><Settings className="h-6 w-6 text-primary"/>Administrative Operations</CardTitle>
+                    <CardDescription>Execute bulk operations and track institutional automation.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-lg border bg-muted/10 gap-4">
+                        <div className="space-y-1">
+                            <h4 className="text-sm font-bold">Student Auto-Registration</h4>
+                            <p className="text-xs text-muted-foreground">Automatically check and register unregistered students to their current standing's semester if fees are configured.</p>
+                        </div>
+                        <Button type="button" variant="outline" asChild>
+                            <NextLink href="/admin/settings/auto-registrations">Manage Auto-Registrations</NextLink>
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Institutional Infrastructure</CardTitle>

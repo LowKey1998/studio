@@ -79,6 +79,7 @@ export default function AdminMarkAttendancePage() {
 
     // Views Data
     const [courseAttendanceData, setCourseAttendanceData] = React.useState<Record<string, Record<string, AttendanceRecord>>>({});
+    const [allRegistrations, setAllRegistrations] = React.useState<Record<string, Record<string, any>>>({});
     const [selectedStudentHistory, setSelectedStudentHistory] = React.useState<string | null>(null);
     const [studentListSearch, setStudentListSearch] = React.useState('');
 
@@ -87,7 +88,7 @@ export default function AdminMarkAttendancePage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [intakeSnap, settingsSnap, coursesSnap, timetablesSnap, semSnap, usersSnap, attendanceSnap, prefSnap] = await Promise.all([
+            const [intakeSnap, settingsSnap, coursesSnap, timetablesSnap, semSnap, usersSnap, attendanceSnap, prefSnap, registrationsSnap] = await Promise.all([
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/teachingTimes')),
                 get(ref(db, 'courses')),
@@ -95,7 +96,8 @@ export default function AdminMarkAttendancePage() {
                 get(ref(db, 'semesters')),
                 get(ref(db, 'users')),
                 get(ref(db, 'attendance')),
-                get(ref(db, 'settings/attendancePreferences'))
+                get(ref(db, 'settings/attendancePreferences')),
+                get(ref(db, 'registrations'))
             ]);
 
             const iData = intakeSnap.val() || {};
@@ -106,6 +108,7 @@ export default function AdminMarkAttendancePage() {
             const uData = usersSnap.val() || {};
             const aData = attendanceSnap.val() || {};
             const prefData = prefSnap.val() || { defaultView: 'marking' };
+            const regsData = registrationsSnap.val() || {};
 
             setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name)));
             setAllCourses(cData);
@@ -115,6 +118,7 @@ export default function AdminMarkAttendancePage() {
                 slots: (sData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
             setCourseAttendanceData(aData);
+            setAllRegistrations(regsData);
             setDefaultView(prefData.defaultView);
             if (!selectedIntake) setViewMode(prefData.defaultView);
 
@@ -252,6 +256,58 @@ export default function AdminMarkAttendancePage() {
         return { present, absent, late, excused, total, rate };
     };
 
+    const getSessionAttendanceStats = React.useCallback((session: TimetableEntry, date: Date) => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const attendanceRecord = courseAttendanceData[session.courseId]?.[dateStr];
+        const isMarked = !!attendanceRecord;
+
+        const list: string[] = [];
+        for (const userId in allRegistrations) {
+            const userRegs = allRegistrations[userId];
+            const isEnrolled = Object.values(userRegs).some((reg: any) => {
+                return reg.courses?.includes(session.courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment');
+            });
+
+            if (isEnrolled) {
+                const studentExists = allStudents.some(s => s.uid === userId);
+                if (studentExists) list.push(userId);
+            }
+        }
+
+        if (!isMarked) {
+            return {
+                present: 0,
+                absent: 0,
+                unmarked: list.length,
+                total: list.length,
+                isMarked: false
+            };
+        }
+
+        let present = 0;
+        let absent = 0;
+        let unmarked = 0;
+
+        list.forEach(uid => {
+            const status = attendanceRecord[uid];
+            if (!status) {
+                unmarked++;
+            } else if (status === 'Absent') {
+                absent++;
+            } else {
+                present++;
+            }
+        });
+
+        return {
+            present,
+            absent,
+            unmarked,
+            total: list.length,
+            isMarked: true
+        };
+    }, [allRegistrations, allStudents, courseAttendanceData]);
+
     const semesterStats = React.useMemo(() => {
         if (!selectedIntake) return [];
         
@@ -307,19 +363,14 @@ export default function AdminMarkAttendancePage() {
                                 </div>
                                 <div className="space-y-1">
                                     {sessions.map(s => {
-                                        const dateStr = format(day, 'yyyy-MM-dd');
-                                        const attendanceRecord = courseAttendanceData[s.courseId]?.[dateStr];
-                                        const isMarked = !!attendanceRecord;
-                                        
-                                        const presentCount = isMarked ? Object.values(attendanceRecord).filter(v => v === 'Present' || v === 'Late' || v === 'Excused Absence').length : 0;
-                                        const totalCount = isMarked ? Object.keys(attendanceRecord).length : 0;
+                                        const stats = getSessionAttendanceStats(s, day);
 
                                         return (
                                             <div 
                                                 key={s.id} 
                                                 className={cn(
                                                     "text-[9px] p-1.5 rounded border border-primary/10 cursor-pointer hover:bg-primary/5 transition-all",
-                                                    isMarked ? "bg-green-50 border-green-200" : "bg-card"
+                                                    stats.isMarked ? "bg-green-50 border-green-200" : "bg-card"
                                                 )}
                                                 onClick={() => {
                                                     setAttendanceDate(day);
@@ -329,16 +380,18 @@ export default function AdminMarkAttendancePage() {
                                             >
                                                 <div className="font-bold text-primary flex justify-between items-start">
                                                     <span className="truncate pr-1">{s.courseCode}</span>
-                                                    {isMarked && <Check className="h-2 w-2 text-green-600"/>}
+                                                    {stats.isMarked && <Check className="h-2 w-2 text-green-600"/>}
                                                 </div>
                                                 <div className="text-muted-foreground flex items-center gap-1 mt-0.5">
                                                     <Clock className="h-2 w-2"/> {s.startTime}
                                                 </div>
-                                                {isMarked && (
-                                                    <div className="mt-1 flex items-center justify-between font-medium text-green-700">
-                                                        <span>{presentCount}/{totalCount} Present</span>
-                                                    </div>
-                                                )}
+                                                <div className="mt-1 flex flex-wrap gap-1 text-[8px] font-semibold">
+                                                    <span className="text-green-600 bg-green-50 px-0.5 rounded">{stats.present}P</span>
+                                                    <span className="text-red-600 bg-red-50 px-0.5 rounded">{stats.absent}A</span>
+                                                    {stats.unmarked > 0 && (
+                                                        <span className="text-gray-500 bg-gray-50 px-0.5 rounded">{stats.unmarked}U</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -435,13 +488,13 @@ export default function AdminMarkAttendancePage() {
                                                             return (
                                                                 <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
                                                                     {sessions.map((entry, eIdx) => {
-                                                                        const isMarked = !!courseAttendanceData[entry.courseId]?.[dateStr];
+                                                                        const stats = getSessionAttendanceStats(entry, date);
                                                                         return (
                                                                             <div 
                                                                                 key={eIdx} 
                                                                                 className={cn(
                                                                                     "cursor-pointer group p-2 rounded-md border bg-background hover:bg-primary/5 mb-2 shadow-sm relative transition-all",
-                                                                                    isMarked ? "border-green-500 bg-green-50/30" : "border-primary/20"
+                                                                                    stats.isMarked ? "border-green-500 bg-green-50/30" : "border-primary/20"
                                                                                 )} 
                                                                                 onClick={() => { 
                                                                                     setAttendanceDate(date); 
@@ -451,7 +504,14 @@ export default function AdminMarkAttendancePage() {
                                                                             >
                                                                                 <p className="font-bold text-primary text-[10px] leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
                                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {entry.venue}</div>
-                                                                                {isMarked && <div className="absolute top-1 right-1"><CheckCircle className="h-3 w-3 text-green-600"/></div>}
+                                                                                <div className="mt-1.5 flex flex-wrap gap-1 text-[9px] font-semibold">
+                                                                                    <span className="text-green-600 bg-green-50 px-1 py-0.5 rounded border border-green-100">{stats.present} P</span>
+                                                                                    <span className="text-red-600 bg-red-50 px-1 py-0.5 rounded border border-red-100">{stats.absent} A</span>
+                                                                                    {stats.unmarked > 0 && (
+                                                                                        <span className="text-gray-500 bg-gray-50 px-1 py-0.5 rounded border border-gray-100">{stats.unmarked} U</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                {stats.isMarked && <div className="absolute top-1 right-1"><CheckCircle className="h-3 w-3 text-green-600"/></div>}
                                                                             </div>
                                                                         );
                                                                     })}

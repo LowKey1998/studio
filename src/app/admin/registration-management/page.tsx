@@ -535,6 +535,10 @@ export default function RegistrationManagementPage() {
     const [saving, setSaving] = React.useState(false);
     const [semesterTypeFilter, setSemesterTypeFilter] = React.useState<'all' | 'current' | 'upcoming'>('all');
 
+    const [allRegistrations, setAllRegistrations] = React.useState<Record<string, any>>({});
+    const [viewingSemesterStudents, setViewingSemesterStudents] = React.useState<{ sem: Semester; intake: Intake; programme: any } | null>(null);
+    const [studentRosterSearch, setStudentRosterSearch] = React.useState('');
+
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editInitialTab, setEditInitialTab] = React.useState('details');
@@ -564,7 +568,7 @@ export default function RegistrationManagementPage() {
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
             ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'users'),
-            ref(db, 'settings/academicCalendar'), ref(db, 'timetables'), ref(db, 'settings/institution')
+            ref(db, 'settings/academicCalendar'), ref(db, 'registrations'), ref(db, 'settings/institution')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
@@ -580,6 +584,7 @@ export default function RegistrationManagementPage() {
                 case 8: setCalendarEvents(Object.entries(data).map(([id, d]:[string, any])=>({id, ...d}))); break;
                 case 9: setAllUsers(data); break;
                 case 10: setCalendarSettings(data); break;
+                case 11: setAllRegistrations(data); break;
                 case 12: setInstitutionSettings(data); break;
             }
             if(i === 12) setLoading(false);
@@ -795,6 +800,7 @@ export default function RegistrationManagementPage() {
 
                                                 const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(sem, predictedDates);
                                                 const isCurrentStanding = standing && sem.year === standing.year && sem.semesterInYear === standing.semester;
+                                                const isUpcoming = nextPhase && sem.year === nextPhase.year && sem.semesterInYear === nextPhase.semester;
                                                 
                                                 const currentPolicy = sem.billingPolicy || institutionSettings?.billingPolicy || 'course';
                                                 const isFlatFee = currentPolicy === 'semester';
@@ -887,6 +893,11 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardContent>
                                                         <CardFooter className="bg-muted/10 border-t flex justify-end gap-2 p-3">
+                                                            {(isCurrentStanding || isUpcoming) && (
+                                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => setViewingSemesterStudents({ sem, intake, programme })} title="View Expected Students Roster">
+                                                                    <Users className="h-4 w-4"/>
+                                                                </Button>
+                                                            )}
                                                             <Button variant="ghost" size="icon" className={cn("h-8 w-8", sem.isFeesSet ? "text-blue-600" : "text-muted-foreground")} onClick={() => handleToggleFeesSet(sem)} title={sem.isFeesSet ? "Unfinalize Fees" : "Finalize Fees"}>
                                                                 <ShieldCheck className="h-4 w-4"/>
                                                             </Button>
@@ -966,16 +977,162 @@ export default function RegistrationManagementPage() {
             </Dialog>
 
             <AlertDialog open={isDeleteSemesterDialogOpen} onOpenChange={setIsDeleteSemesterDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the semester record and its associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => { setSemesterToDeleteId(null); setIsDeleteSemesterDialogOpen(false); }}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                            Delete Semester
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </div>
-    );
-}
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the semester record and its associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel onClick={() => { setSemesterToDeleteId(null); setIsDeleteSemesterDialogOpen(false); }}>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                            Delete Semester
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+
+                                            <Dialog open={!!viewingSemesterStudents} onOpenChange={(o) => { if(!o) { setViewingSemesterStudents(null); setStudentRosterSearch(''); } }}>
+                                                <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-6">
+                                                    <DialogHeader>
+                                                        <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                                                            <Users className="h-5 w-5 text-primary" />
+                                                            Expected Student Roster
+                                                        </DialogTitle>
+                                                        <DialogDescription>
+                                                            Showing expected students for <strong>{viewingSemesterStudents?.programme?.name}</strong> ({viewingSemesterStudents?.sem?.name}).
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+
+                                                    <div className="flex flex-col gap-4 py-2 flex-1 overflow-hidden">
+                                                        <div className="relative">
+                                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                                            <Input
+                                                                placeholder="Search by student name or ID..."
+                                                                value={studentRosterSearch}
+                                                                onChange={(e) => setStudentRosterSearch(e.target.value)}
+                                                                className="pl-9"
+                                                            />
+                                                        </div>
+
+                                                        <ScrollArea className="flex-1 border rounded-lg p-1 bg-muted/10">
+                                                            <div className="p-2 space-y-2">
+                                                                {(() => {
+                                                                    if (!viewingSemesterStudents) return null;
+                                                                    const { sem, intake, programme } = viewingSemesterStudents;
+
+                                                                    const pathwayStudents = Object.entries(allUsers)
+                                                                        .filter(([_, u]: [string, any]) => {
+                                                                            return u.role === 'Student' &&
+                                                                                u.intakeId === intake.id &&
+                                                                                u.programmeId === programme.id;
+                                                                        })
+                                                                        .map(([uid, u]: [string, any]) => ({
+                                                                            uid,
+                                                                            id: u.studentId || u.id || uid,
+                                                                            name: u.name || 'Unknown Student',
+                                                                            email: u.email || '',
+                                                                        }));
+
+                                                                    const query = studentRosterSearch.toLowerCase().trim();
+                                                                    const filteredStudents = pathwayStudents.filter(s => {
+                                                                        return s.name.toLowerCase().includes(query) ||
+                                                                            s.id.toLowerCase().includes(query) ||
+                                                                            s.email.toLowerCase().includes(query);
+                                                                    });
+
+                                                                    if (filteredStudents.length === 0) {
+                                                                        return (
+                                                                            <div className="text-center py-12 text-muted-foreground italic">
+                                                                                No matching students found in this path.
+                                                                            </div>
+                                                                        );
+                                                                    }
+
+                                                                    return (
+                                                                        <Table>
+                                                                            <TableHeader>
+                                                                                <TableRow>
+                                                                                    <TableHead className="font-bold text-xs">Student ID</TableHead>
+                                                                                    <TableHead className="font-bold text-xs">Name</TableHead>
+                                                                                    <TableHead className="font-bold text-xs">Status</TableHead>
+                                                                                    <TableHead className="font-bold text-xs">Registration Info</TableHead>
+                                                                                </TableRow>
+                                                                            </TableHeader>
+                                                                            <TableBody>
+                                                                                {filteredStudents.map(student => {
+                                                                                    const reg = allRegistrations[student.uid]?.[sem.id];
+                                                                                    const isRegistered = reg && (reg.status === 'Completed' || reg.status === 'Pending Payment');
+                                                                                    
+                                                                                    let sourceLabel = '';
+                                                                                    if (isRegistered) {
+                                                                                        const src = reg.source;
+                                                                                        if (src === 'auto-registration') {
+                                                                                            sourceLabel = 'Admin Auto-Initiated';
+                                                                                        } else if (src === 'manual') {
+                                                                                            sourceLabel = 'Student Portal (Manual)';
+                                                                                        } else {
+                                                                                            sourceLabel = src || 'Manual';
+                                                                                        }
+                                                                                    }
+
+                                                                                    return (
+                                                                                        <TableRow key={student.uid}>
+                                                                                            <TableCell className="font-mono text-xs font-semibold">{student.id}</TableCell>
+                                                                                            <TableCell className="text-xs font-medium">
+                                                                                                <div>{student.name}</div>
+                                                                                                <div className="text-[10px] text-muted-foreground">{student.email}</div>
+                                                                                            </TableCell>
+                                                                                            <TableCell>
+                                                                                                {isRegistered ? (
+                                                                                                    <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 text-[10px] font-bold">
+                                                                                                        Registered
+                                                                                                    </Badge>
+                                                                                                ) : (
+                                                                                                    <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 text-[10px] font-bold">
+                                                                                                        Not Registered
+                                                                                                    </Badge>
+                                                                                                )}
+                                                                                            </TableCell>
+                                                                                            <TableCell className="text-xs">
+                                                                                                {isRegistered ? (
+                                                                                                    <div className="space-y-0.5">
+                                                                                                        <div className="font-semibold text-[10px] text-muted-foreground uppercase">{sourceLabel}</div>
+                                                                                                        {reg.timestamp && (() => {
+                                                                                                            try {
+                                                                                                                const date = typeof reg.timestamp === 'number' 
+                                                                                                                    ? new Date(reg.timestamp) 
+                                                                                                                    : typeof reg.timestamp === 'string' 
+                                                                                                                        ? parseISO(reg.timestamp) 
+                                                                                                                        : new Date(reg.timestamp);
+                                                                                                                return (
+                                                                                                                    <div className="text-[10px] text-gray-500">
+                                                                                                                        {format(date, 'dd MMM yyyy, HH:mm')}
+                                                                                                                    </div>
+                                                                                                                );
+                                                                                                            } catch (e) {
+                                                                                                                return null;
+                                                                                                            }
+                                                                                                        })()}
+                                                                                                    </div>
+                                                                                                ) : (
+                                                                                                    <span className="text-muted-foreground italic text-[10px]">N/A</span>
+                                                                                                )}
+                                                                                            </TableCell>
+                                                                                        </TableRow>
+                                                                                    );
+                                                                                })}
+                                                                            </TableBody>
+                                                                        </Table>
+                                                                    );
+                                                                })()}
+                                                            </div>
+                                                        </ScrollArea>
+                                                    </div>
+
+                                                    <DialogFooter className="border-t pt-4">
+                                                        <Button variant="outline" onClick={() => setViewingSemesterStudents(null)}>
+                                                            Close
+                                                        </Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </div>
+                                    );
+                                }

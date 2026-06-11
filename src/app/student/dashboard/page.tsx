@@ -73,7 +73,8 @@ type DeadlineEvent = {
 };
 
 export default function StudentDashboardPage() {
-    const { user, userProfile, loading: authLoading } = useAuth();
+    const { user, userProfile: _userProfile, loading: authLoading } = useAuth();
+    const userProfile = _userProfile as any;
     const [loading, setLoading] = React.useState(true);
     const [enrolledCourses, setEnrolledCourses] = React.useState<Course[]>([]);
     const [attendanceRate, setAttendanceRate] = React.useState(0);
@@ -85,7 +86,13 @@ export default function StudentDashboardPage() {
         semesterName: string;
         academicStanding: string;
         scholarshipInfo?: { name: string; percentage: number };
+        scholarshipAmount: number;
+        baseTuition: number;
+        mandatoryTotal: number;
+        optionalTotal: number;
+        lateFee: number;
     } | null>(null);
+    const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [todaySchedule, setTodaySchedule] = React.useState<TimetableEntry[]>([]);
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
     const [paymentDeadline, setPaymentDeadline] = React.useState<{ title: string; date: string } | null>(null);
@@ -142,6 +149,7 @@ export default function StudentDashboardPage() {
             const allAssessments = assSnap.val() || {};
             const calSettings = settingsSnap.val() || {};
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
+            setFinancialSettings(fSettings);
             const allSemesters = semSnap.val() || {};
             const allAssignments = studentAssSnap.val() || {};
             const allTemplates = templatesSnap.val() || {};
@@ -268,7 +276,7 @@ export default function StudentDashboardPage() {
                     : tuition + mandatory + optional + late;
                 totalDueOverall += due;
             });
-            const totalPaidOverall = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
+            const totalPaidOverall = (allTransactions as any[]).reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0);
             setFeeBalance(Math.max(0, totalDueOverall - totalPaidOverall));
 
             if (matchingSemesterId && allRegistrations[matchingSemesterId]) {
@@ -290,7 +298,7 @@ export default function StudentDashboardPage() {
                         : 0;
 
                     const due = tuition - scholarshipAmount + mandatory + optional + late;
-                    const paid = allTransactions.filter((t: any) => t.invoiceId === reg.invoiceId).reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
+                    const paid = (allTransactions as any[]).filter((t: any) => t.invoiceId === reg.invoiceId).reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0);
                     
                     setCurrentSemesterFinance({
                         due,
@@ -298,7 +306,12 @@ export default function StudentDashboardPage() {
                         balance: Math.max(0, due - paid),
                         semesterName: semester?.name || 'Current Semester',
                         academicStanding: standingLabel,
-                        scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined
+                        scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined,
+                        scholarshipAmount,
+                        baseTuition: tuition,
+                        mandatoryTotal: mandatory,
+                        optionalTotal: optional,
+                        lateFee: late
                     });
 
                     const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
@@ -468,10 +481,30 @@ export default function StudentDashboardPage() {
                         <p>{financialWarning.message}</p>
                         <div className="text-xs space-y-1">
                             <p className="font-bold uppercase opacity-70">Active Restrictions:</p>
-                            <ul className="list-disc pl-5 opacity-90">
-                                <li>Semester results are hidden</li>
-                                <li>New registrations are blocked</li>
-                                <li>Library borrowing suspended</li>
+                            <ul className="list-disc pl-5 opacity-90 space-y-1">
+                                {(() => {
+                                    const activeList = [];
+                                    const dr = financialSettings?.defaulterRestrictions;
+                                    if (dr) {
+                                        if (dr.results) activeList.push("Semester results are hidden");
+                                        if (dr.registration) activeList.push("New registrations are blocked");
+                                        if (dr.library) activeList.push("Library borrowing suspended");
+                                        if (dr.exams) activeList.push("Exam access is restricted");
+                                        if (dr.sidebar) {
+                                            Object.entries(dr.sidebar).forEach(([cat, restricted]) => {
+                                                if (restricted) {
+                                                    activeList.push(`Access to '${cat}' section is blocked`);
+                                                }
+                                            });
+                                        }
+                                    }
+                                    if (activeList.length === 0) {
+                                        activeList.push("General account services restricted");
+                                    }
+                                    return activeList.map((rest, idx) => (
+                                        <li key={idx}>{rest}</li>
+                                    ));
+                                })()}
                             </ul>
                         </div>
                         <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive font-bold" asChild><Link href="/student/payments">Pay to Restore Access</Link></Button>
@@ -492,12 +525,41 @@ export default function StudentDashboardPage() {
                         </CardHeader>
                         <CardContent className="space-y-3">
                             <div className="flex justify-between items-center text-xs">
-                                <span className="opacity-70 italic font-medium text-muted-foreground">You've paid:</span>
-                                <span className="font-bold text-green-600">ZMW {currentSemesterFinance.paid.toFixed(2)}</span>
+                                <span className="opacity-70 italic font-medium text-muted-foreground">Tuition Fee:</span>
+                                <span className="font-semibold text-gray-800">ZMW {currentSemesterFinance.baseTuition.toFixed(2)}</span>
+                            </div>
+                            {currentSemesterFinance.scholarshipAmount > 0 && (
+                                <div className="flex justify-between items-center text-xs text-blue-600 bg-blue-50/50 px-2 py-1 rounded border border-blue-100">
+                                    <span className="italic font-bold">Scholarship Deduction ({currentSemesterFinance.scholarshipInfo?.percentage}%):</span>
+                                    <span className="font-bold">- ZMW {currentSemesterFinance.scholarshipAmount.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {currentSemesterFinance.mandatoryTotal > 0 && (
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="opacity-70 italic font-medium text-muted-foreground">Mandatory Fees:</span>
+                                    <span className="font-semibold text-gray-800">ZMW {currentSemesterFinance.mandatoryTotal.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {currentSemesterFinance.optionalTotal > 0 && (
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="opacity-70 italic font-medium text-muted-foreground">Optional Fees:</span>
+                                    <span className="font-semibold text-gray-800">ZMW {currentSemesterFinance.optionalTotal.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {currentSemesterFinance.lateFee > 0 && (
+                                <div className="flex justify-between items-center text-xs text-red-600">
+                                    <span className="opacity-70 italic font-medium">Late Registration Fee:</span>
+                                    <span className="font-bold">ZMW {currentSemesterFinance.lateFee.toFixed(2)}</span>
+                                </div>
+                            )}
+                            <Separator className="bg-primary/10"/>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="opacity-70 italic font-medium text-muted-foreground">Total Fee Due:</span>
+                                <span className="font-bold text-gray-800">ZMW {currentSemesterFinance.due.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center text-xs">
-                                <span className="opacity-70 italic font-medium text-muted-foreground">Total supposed to pay:</span>
-                                <span className="font-bold">ZMW {currentSemesterFinance.due.toFixed(2)}</span>
+                                <span className="opacity-70 italic font-medium text-muted-foreground">You've paid:</span>
+                                <span className="font-bold text-green-600">ZMW {currentSemesterFinance.paid.toFixed(2)}</span>
                             </div>
                             <Separator className="bg-primary/10"/>
                             <div className="flex justify-between items-center">
