@@ -7,6 +7,7 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+import { logError } from "@/lib/error-logger"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
@@ -147,13 +148,15 @@ function toast({ ...props }: Toast) {
 
   // Automated global error logging for destructive toasts
   if (props.variant === 'destructive') {
-    import('@/lib/error-logger').then(({ logError }) => {
+    try {
       logError(
         String(props.description || props.title || 'Unnamed UI Error'), 
         'UI Destructive Toast', 
         { title: props.title, description: props.description }
       );
-    });
+    } catch (e) {
+      console.error("Error logging failed", e);
+    }
   }
 
   const update = (props: ToasterToast) =>

@@ -30,7 +30,7 @@ function getAdminApp(): App | null {
         clientEmail,
         privateKey,
       }),
-      databaseURL: `https://${projectId}.firebaseio.com`,
+      databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || `https://${projectId}.firebaseio.com`,
     });
   } catch (error) {
     console.error("Failed to initialize Firebase Admin SDK:", error);
