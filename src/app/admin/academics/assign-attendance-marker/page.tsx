@@ -11,19 +11,36 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, set, remove, onValue } from 'firebase/database';
-import { Loader2, Save, Mail, UserCheck, Shield, BookCheck, ClipboardCheck, Info, Search, Settings } from 'lucide-react';
+import { Loader2, Save, Mail, UserCheck, Shield, BookCheck, ClipboardCheck, Info, Search, Settings, MapPin, CalendarDays, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { sendEmail } from '@/ai/flows/send-email-flow';
-import { Alert } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
 type Course = { id: string; name: string; code: string; separateInstance?: boolean; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; };
+type TimeSlot = { id: string; startTime: string; endTime: string; };
+
+type TimetableEntry = {
+    id: string;
+    semesterId: string;
+    courseId: string;
+    courseCode: string;
+    courseName: string;
+    semesterName: string;
+    intakeName: string;
+    day: string;
+    startTime: string;
+    endTime: string;
+    venue: string;
+};
 
 type MarkerSettings = {
     enabled: boolean;
@@ -32,18 +49,28 @@ type MarkerSettings = {
     assignedBy: string;
 };
 
+const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
 export default function AssignAttendanceMarkerPage() {
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: daysOfWeek, slots: [] });
+    const [masterTimetable, setMasterTimetable] = React.useState<TimetableEntry[]>([]);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     const [attendanceMarkers, setAttendanceMarkers] = React.useState<Record<string, Record<string, MarkerSettings>>>({});
     const [registrations, setRegistrations] = React.useState<any>({});
     const [loading, setLoading] = React.useState(true);
 
     const [selectedIntake, setSelectedIntake] = React.useState('');
-    const [selectedCourse, setSelectedCourse] = React.useState('');
+    const [selectedSession, setSelectedSession] = React.useState<TimetableEntry | null>(null);
     const [studentSearch, setStudentSearch] = React.useState('');
     
     // Email Template Modal
@@ -64,6 +91,8 @@ export default function AssignAttendanceMarkerPage() {
             semesters: ref(db, 'semesters'),
             courses: ref(db, 'courses'),
             users: ref(db, 'users'),
+            teachingTimes: ref(db, 'settings/teachingTimes'),
+            timetables: ref(db, 'timetables'),
             calendar: ref(db, 'settings/academicCalendar'),
             markers: ref(db, 'settings/attendanceMarkers'),
             template: ref(db, 'settings/attendanceMarkerEmailTemplate'),
@@ -80,11 +109,13 @@ export default function AssignAttendanceMarkerPage() {
 
         const loadStaticData = async () => {
             try {
-                const [intakeSnap, semSnap, coursesSnap, usersSnap, calSnap, tplSnap, regsSnap] = await Promise.all([
+                const [intakeSnap, semSnap, coursesSnap, usersSnap, teachingSnap, timetablesSnap, calSnap, tplSnap, regsSnap] = await Promise.all([
                     get(dataRefs.intakes),
                     get(dataRefs.semesters),
                     get(dataRefs.courses),
                     get(dataRefs.users),
+                    get(dataRefs.teachingTimes),
+                    get(dataRefs.timetables),
                     get(dataRefs.calendar),
                     get(dataRefs.template),
                     get(dataRefs.registrations)
@@ -106,6 +137,13 @@ export default function AssignAttendanceMarkerPage() {
                             .map(([uid, u]: [string, any]) => ({ uid, ...u }))
                     );
                 }
+                if (teachingSnap.exists()) {
+                    const tSnapVal = teachingSnap.val() || {};
+                    setTeachingTimes({
+                        days: tSnapVal.days || daysOfWeek,
+                        slots: (tSnapVal.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                    });
+                }
                 if (calSnap.exists()) {
                     setCalendarSettings(calSnap.val());
                 }
@@ -115,6 +153,38 @@ export default function AssignAttendanceMarkerPage() {
                 if (regsSnap.exists()) {
                     setRegistrations(regsSnap.val());
                 }
+
+                // Compile master timetable
+                const entries: TimetableEntry[] = [];
+                const tData = timetablesSnap.val() || {};
+                const sData = semSnap.val() || {};
+                const cData = coursesSnap.val() || {};
+                const iData = intakeSnap.val() || {};
+
+                for (const semId in tData) {
+                    const semInfo = sData[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry' };
+                    const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : null;
+
+                    for (const cId in tData[semId]) {
+                        const courseInfo = cData[cId];
+                        if (!courseInfo) continue;
+
+                        Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
+                            entries.push({
+                                id: entryId,
+                                semesterId: semId,
+                                courseId: cId,
+                                courseCode: courseInfo.code,
+                                courseName: courseInfo.name,
+                                semesterName: semInfo.name,
+                                intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
+                                ...entry
+                            });
+                        });
+                    });
+                }
+                setMasterTimetable(entries);
+
             } catch (err) {
                 console.error("Error loading data:", err);
                 toast({ variant: 'destructive', title: 'Data Load Failed' });
@@ -157,7 +227,7 @@ export default function AssignAttendanceMarkerPage() {
 
     // Filter students enrolled in the selected course for the active semester
     const enrolledStudents = React.useMemo(() => {
-        if (!activeSemester || !selectedCourse) return [];
+        if (!activeSemester || !selectedSession) return [];
         const list: Student[] = [];
 
         for (const userId in registrations) {
@@ -168,7 +238,7 @@ export default function AssignAttendanceMarkerPage() {
                     ? activeReg.courses 
                     : Object.keys(activeReg.courses);
                 
-                if (coursesList.includes(selectedCourse) && (activeReg.status === 'Completed' || activeReg.status === 'Pending Payment')) {
+                if (coursesList.includes(selectedSession.courseId) && (activeReg.status === 'Completed' || activeReg.status === 'Pending Payment')) {
                     const student = allStudents.find(s => s.uid === userId);
                     if (student) {
                         list.push(student);
@@ -177,7 +247,7 @@ export default function AssignAttendanceMarkerPage() {
             }
         }
         return list.sort((a, b) => a.name.localeCompare(b.name));
-    }, [activeSemester, selectedCourse, registrations, allStudents]);
+    }, [activeSemester, selectedSession, registrations, allStudents]);
 
     // Filter enrolled students by search
     const filteredStudents = React.useMemo(() => {
@@ -189,11 +259,11 @@ export default function AssignAttendanceMarkerPage() {
 
     // Format marker settings path key matching student side pathing
     const getMarkerPathKey = () => {
-        if (!selectedCourse || !activeSemester) return '';
-        const courseObj = courses.find(c => c.id === selectedCourse);
+        if (!selectedSession || !activeSemester) return '';
+        const courseObj = courses.find(c => c.id === selectedSession.courseId);
         return (courseObj?.separateInstance && activeSemester) 
-            ? `${selectedCourse}_${activeSemester.id}` 
-            : selectedCourse;
+            ? `${selectedSession.courseId}_${activeSemester.id}` 
+            : selectedSession.courseId;
     };
 
     // Save Email Template
@@ -213,12 +283,12 @@ export default function AssignAttendanceMarkerPage() {
     // Toggle Attendance Marker Privilege
     const handleTogglePrivilege = async (student: Student, isChecked: boolean) => {
         const pathKey = getMarkerPathKey();
-        if (!pathKey || !selectedCourse || !activeSemester) return;
+        if (!pathKey || !selectedSession || !activeSemester) return;
 
         setActionLoading(student.uid);
         try {
             const markerRef = ref(db, `settings/attendanceMarkers/${pathKey}/${student.uid}`);
-            const courseObj = courses.find(c => c.id === selectedCourse);
+            const courseObj = courses.find(c => c.id === selectedSession.courseId);
 
             if (isChecked) {
                 // Grant privilege
@@ -293,6 +363,8 @@ export default function AssignAttendanceMarkerPage() {
         );
     }
 
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+    const hasSlots = teachingTimes.slots.length > 0;
     const pathKey = getMarkerPathKey();
 
     return (
@@ -301,71 +373,154 @@ export default function AssignAttendanceMarkerPage() {
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
                         <CardTitle className="text-2xl font-headline font-bold">Assign Attendance Marker</CardTitle>
-                        <CardDescription>Authorize students to record attendance for their enrolled courses.</CardDescription>
+                        <CardDescription>Select a class from the cohort schedule below to assign student markers.</CardDescription>
                     </div>
                     <Button variant="outline" onClick={() => setIsTemplateModalOpen(true)}>
                         <Settings className="mr-2 h-4 w-4" /> Email Settings
                     </Button>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="grid md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="intake-select">Select Pathway / Intake</Label>
-                            <Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setSelectedCourse(''); }}>
-                                <SelectTrigger id="intake-select">
+                    <div className="max-w-md space-y-2">
+                        <Label htmlFor="intake-select">Select Pathway / Intake</Label>
+                        <div className="flex items-center gap-4">
+                            <Select value={selectedIntake} onValueChange={setSelectedIntake}>
+                                <SelectTrigger id="intake-select" className="w-[240px]">
                                     <SelectValue placeholder="Choose Intake..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                        </div>
-
-                        {selectedIntake && (
-                            <div className="space-y-2">
-                                <Label htmlFor="course-select">Select Class / Course</Label>
-                                <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                                    <SelectTrigger id="course-select">
-                                        <SelectValue placeholder="Choose Course..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {courses.map(c => <SelectItem key={c.id} value={c.id}>{c.code}: {c.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-                    </div>
-
-                    {selectedIntake && intakeStanding && (
-                        <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="px-3 py-1 font-bold">
-                                Cohort Standing: Year {intakeStanding.year}, Semester {intakeStanding.semester}
-                            </Badge>
-                            {activeSemester ? (
-                                <Badge variant="outline" className="text-green-600 bg-green-50/50 border-green-200">
-                                    Active Semester: {activeSemester.name}
-                                </Badge>
-                            ) : (
-                                <Badge variant="destructive">
-                                    No Active Semester Record Found
+                            {selectedIntake && intakeStanding && (
+                                <Badge variant="secondary" className="px-3 py-1 font-bold whitespace-nowrap h-10 border-primary/20 bg-primary/5 text-primary">
+                                    Standing: Year {intakeStanding.year}, Sem {intakeStanding.semester}
                                 </Badge>
                             )}
                         </div>
-                    )}
+                    </div>
                 </CardContent>
             </Card>
 
-            {selectedCourse && activeSemester && (
+            {selectedIntake && !activeSemester && (
+                <Alert variant="destructive" className="bg-orange-50 border-orange-200">
+                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                    <AlertTitle className="font-bold text-orange-800">No Active Semester</AlertTitle>
+                    <AlertDescription className="text-orange-700 text-sm">
+                        No active semester record found for <strong>{intakes.find(i=>i.id===selectedIntake)?.name}</strong> at <strong>Year {intakeStanding?.year}, Sem {intakeStanding?.semester}</strong>. 
+                        Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {selectedIntake && hasSlots && activeSemester && (
                 <Card className="shadow-lg">
                     <CardHeader>
-                        <CardTitle className="text-lg font-headline">Roster & Privileges</CardTitle>
-                        <CardDescription>Select student(s) to designate as marker(s) for the current cohort.</CardDescription>
+                        <CardTitle className="text-lg font-headline">Schedule Grid: {activeSemester.name}</CardTitle>
+                        <CardDescription>Click on a session to select attendance markers for that course.</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="overflow-x-auto">
+                        <div className="border rounded-lg min-w-[800px]">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        {teachingTimes.slots.map((s, i) => (
+                                            <TableHead key={i} className="text-center font-bold border-r text-xs">
+                                                {s.startTime}-{s.endTime}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {displayDays.map(day => (
+                                        <TableRow key={day}>
+                                            <TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">
+                                                {day}
+                                            </TableCell>
+                                            {teachingTimes.slots.map((slot, sIdx) => {
+                                                const start = timeToMinutes(slot.startTime); 
+                                                const end = timeToMinutes(slot.endTime);
+                                                const sessions = masterTimetable.filter(e => 
+                                                    e.semesterId === activeSemester.id && 
+                                                    e.day === day && 
+                                                    timeToMinutes(e.startTime) >= start && 
+                                                    timeToMinutes(e.startTime) < end
+                                                );
+                                                
+                                                // Deduplicate sessions that might be repeated across semester nodes
+                                                const uniqueSessions = sessions.reduce((acc, current) => {
+                                                    const key = `${current.courseId}-${current.day}-${current.startTime}-${current.venue}`;
+                                                    if (!acc.find(item => `${item.courseId}-${item.day}-${item.startTime}-${item.venue}` === key)) {
+                                                        acc.push(current);
+                                                    }
+                                                    return acc;
+                                                }, [] as TimetableEntry[]);
+
+                                                return (
+                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                        {uniqueSessions.map(entry => {
+                                                            const courseObj = courses.find(c => c.id === entry.courseId);
+                                                            const compositeKey = `${entry.semesterId}-${entry.courseId}-${entry.id}`;
+                                                            
+                                                            const currentMarkerKey = (courseObj?.separateInstance) ? `${entry.courseId}_${activeSemester.id}` : entry.courseId;
+                                                            const markersList = attendanceMarkers[currentMarkerKey] || {};
+                                                            const markersCount = Object.values(markersList).filter(m => m.enabled).length;
+
+                                                            return (
+                                                                <div 
+                                                                    key={compositeKey} 
+                                                                    className={cn(
+                                                                        "cursor-pointer p-2.5 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2 shadow-sm relative",
+                                                                        selectedSession?.id === entry.id && "ring-2 ring-primary"
+                                                                    )} 
+                                                                    onClick={() => { 
+                                                                        setSelectedSession(entry); 
+                                                                        setStudentSearch(''); 
+                                                                    }}
+                                                                >
+                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>
+                                                                        {entry.courseCode}: {entry.courseName}
+                                                                    </p>
+                                                                    <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1">
+                                                                        <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                    </p>
+                                                                    {markersCount > 0 ? (
+                                                                        <Badge className="text-[8px] h-3.5 px-1 mt-1.5 bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+                                                                            {markersCount} Marker{markersCount > 1 ? 's' : ''}
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <Badge variant="outline" className="text-[8px] h-3.5 px-1 mt-1.5 text-muted-foreground hover:bg-transparent">
+                                                                            No Markers
+                                                                        </Badge>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </TableCell>
+                                                );
+                                            })}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Attendance Marker Assignment Dialog */}
+            <Dialog open={!!selectedSession} onOpenChange={(o) => !o && setSelectedSession(null)}>
+                <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Assign Markers: {selectedSession?.courseName}</DialogTitle>
+                        <DialogDescription>{selectedSession?.courseCode} &middot; {selectedSession?.day} {selectedSession?.startTime} &middot; {selectedSession?.venue}</DialogDescription>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-hidden py-4 flex flex-col gap-4">
                         <div className="relative max-w-sm">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input 
-                                placeholder="Search enrolled students..." 
+                                placeholder="Search enrolled student roster..." 
                                 className="pl-8" 
                                 value={studentSearch} 
                                 onChange={e => setStudentSearch(e.target.value)} 
@@ -373,9 +528,9 @@ export default function AssignAttendanceMarkerPage() {
                         </div>
 
                         {filteredStudents.length > 0 ? (
-                            <div className="border rounded-lg overflow-hidden bg-card">
+                            <div className="border rounded-lg overflow-y-auto flex-1 bg-card">
                                 <Table>
-                                    <TableHeader className="bg-muted/50">
+                                    <TableHeader className="bg-muted/50 sticky top-0 z-10">
                                         <TableRow>
                                             <TableHead className="w-[120px]">Student ID</TableHead>
                                             <TableHead>Student Name</TableHead>
@@ -427,14 +582,18 @@ export default function AssignAttendanceMarkerPage() {
                                 </Table>
                             </div>
                         ) : (
-                            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/10">
-                                <Info className="mx-auto h-8 w-8 text-muted-foreground opacity-30 mb-2" />
-                                <p className="text-sm text-muted-foreground italic">No students found matching the selected filters.</p>
+                            <div className="text-center py-16 border-2 border-dashed rounded-lg bg-muted/10 flex flex-col justify-center items-center flex-1">
+                                <Info className="h-8 w-8 text-muted-foreground opacity-30 mb-2" />
+                                <p className="text-sm text-muted-foreground italic">No students found matching the selected class roster.</p>
                             </div>
                         )}
-                    </CardContent>
-                </Card>
-            )}
+                    </div>
+
+                    <DialogFooter className="border-t pt-4">
+                        <Button onClick={() => setSelectedSession(null)}>Done</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Email Template Modal Dialog */}
             <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
