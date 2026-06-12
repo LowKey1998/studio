@@ -109,6 +109,8 @@ type PaymentSummary = {
         optionalItems?: any[];
     };
     scholarshipInfo?: { name: string; percentage: number };
+    regSource?: string;
+    regStatus?: string;
 };
 
 export default function StudentPaymentsPage() {
@@ -192,7 +194,7 @@ export default function StudentPaymentsPage() {
                 .filter(t => t.userId === currentUser.uid && t.status === 'successful');
 
             const summaries: PaymentSummary[] = Object.entries(regsData)
-                .map(([semId, reg]: [string, any]) => {
+                .map(([semId, reg]: [string, any]): PaymentSummary | null => {
                     const semesterInfo = semestersData[semId];
                     if (!semesterInfo || semesterInfo.status === 'Archived' || semesterInfo.intakeId !== userProfile.intakeId) return null;
 
@@ -273,7 +275,9 @@ export default function StudentPaymentsPage() {
                         thresholdMet,
                         isProvisional,
                         breakdown: billingResults.breakdown,
-                        scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined
+                        scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined,
+                        regSource: reg.source || 'manual',
+                        regStatus: reg.status || 'Pending Approval'
                     };
                 })
                 .filter((s): s is PaymentSummary => s !== null);
@@ -475,11 +479,25 @@ export default function StudentPaymentsPage() {
                                     </div>
                                 </div>
                             </CardContent>
-                            <CardFooter className="bg-muted/10 border-t justify-end p-4 gap-2">
-                                <Button variant="outline" size="sm" onClick={() => handleDownloadInvoice(payment)} disabled={payment.isProvisional || !!actionLoading}>
-                                    {actionLoading === `dl-${payment.invoice?.invoiceId}` ? <Loader2 className="animate-spin h-4 w-4"/> : <Download className="mr-2 h-4 w-4"/>}Statement
-                                </Button>
-                                <Button size="sm" asChild><Link href="/student/dashboard">Pay Fees</Link></Button>
+                            <CardFooter className="bg-muted/10 border-t flex flex-col sm:flex-row sm:justify-between items-stretch sm:items-center p-4 gap-3">
+                                <div className="text-left flex-1">
+                                    {payment.regSource === 'manual' && payment.regStatus === 'Pending Approval' && (
+                                        <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5 animate-pulse">
+                                            <Clock className="h-3.5 w-3.5 shrink-0" />
+                                            Payment will be enabled once registration is approved.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                    <Button variant="outline" size="sm" onClick={() => handleDownloadInvoice(payment)} disabled={payment.isProvisional || !!actionLoading}>
+                                        {actionLoading === `dl-${payment.invoice?.invoiceId}` ? <Loader2 className="animate-spin h-4 w-4"/> : <Download className="mr-2 h-4 w-4"/>}Statement
+                                    </Button>
+                                    {payment.regSource === 'manual' && payment.regStatus === 'Pending Approval' ? (
+                                        <Button size="sm" disabled className="opacity-50 cursor-not-allowed">Pay Fees</Button>
+                                    ) : (
+                                        <Button size="sm" asChild><Link href="/student/dashboard">Pay Fees</Link></Button>
+                                    )}
+                                </div>
                             </CardFooter>
                         </Card>
                     ))}

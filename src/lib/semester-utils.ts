@@ -8,6 +8,7 @@ export type AcademicCycle = {
     semester: number;
     startMonth: number; // 0-11
     endMonth: number;   // 0-11
+    years?: Record<string, { year: number; startDay: number; endDay: number; }> | { year: number; startDay: number; endDay: number; }[];
 };
 
 export type Anomaly = {
@@ -157,6 +158,23 @@ export function calculateSemesterDateRange(
 
     const monthsPerSemester = Math.floor(12 / cyclesPerYear);
     const endDate = endOfMonth(addMonths(startDate, monthsPerSemester - 1));
+
+    // Apply custom yearly start/end days override if configured
+    const matchingCycle = cycles.find(c => c.semester === targetSemesterInYear);
+    if (matchingCycle && matchingCycle.years) {
+        const yearsList = Array.isArray(matchingCycle.years) 
+            ? matchingCycle.years 
+            : Object.values(matchingCycle.years);
+        const yearConfig = yearsList.find((y: any) => y && Number(y.year) === startDate!.getFullYear());
+        if (yearConfig) {
+            if (yearConfig.startDay !== undefined && yearConfig.startDay !== null) {
+                startDate.setDate(Number(yearConfig.startDay));
+            }
+            if (yearConfig.endDay !== undefined && yearConfig.endDay !== null) {
+                endDate.setDate(Number(yearConfig.endDay));
+            }
+        }
+    }
 
     return { from: startDate, to: endDate };
 }

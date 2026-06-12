@@ -255,6 +255,7 @@ export const allMenuItems = [
       roles: ['Admin'],
       items: [
           { href: '/admin/exams/grade-approval', label: 'Final Grade Approvals', icon: CheckCircle2 },
+          { href: '/admin/graduation/clearance', label: 'Graduation Clearance', icon: CheckCircle2 },
           { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
           { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: FileCheck },
           { href: '/admin/addons/alumni', label: 'Alumni Directory', icon: Users2 },

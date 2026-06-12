@@ -20,9 +20,9 @@ const months = [
 export default function SemesterSetupPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
-    const [standardCycles, setStandardCycles] = React.useState([
-        { semester: 1, startMonth: 0, endMonth: 5 },
-        { semester: 2, startMonth: 6, endMonth: 11 }
+    const [standardCycles, setStandardCycles] = React.useState<any[]>([
+        { semester: 1, startMonth: 0, endMonth: 5, years: [] },
+        { semester: 2, startMonth: 6, endMonth: 11, years: [] }
     ]);
     const [anomalies, setAnomalies] = React.useState<any[]>([]);
     const { toast } = useToast();
@@ -32,7 +32,13 @@ export default function SemesterSetupPage() {
         const unsub = onValue(settingsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                if (data.standardCycles) setStandardCycles(data.standardCycles);
+                if (data.standardCycles) {
+                    const normalized = data.standardCycles.map((c: any) => ({
+                        ...c,
+                        years: c.years ? (Array.isArray(c.years) ? c.years : Object.values(c.years)) : []
+                    }));
+                    setStandardCycles(normalized);
+                }
                 if (data.anomalies) setAnomalies(Object.values(data.anomalies));
             }
             setLoading(false);
@@ -44,7 +50,12 @@ export default function SemesterSetupPage() {
         setSaving(true);
         try {
             await set(ref(db, 'settings/academicCalendar'), {
-                standardCycles,
+                standardCycles: standardCycles.map(c => ({
+                    semester: c.semester,
+                    startMonth: c.startMonth,
+                    endMonth: c.endMonth,
+                    years: (c.years || []).reduce((acc: any, y: any, idx: number) => ({ ...acc, [idx]: y }), {})
+                })),
                 anomalies: anomalies.reduce((acc, a, i) => ({ ...acc, [i]: a }), {})
             });
             toast({ title: "Calendar settings saved." });
@@ -106,6 +117,95 @@ export default function SemesterSetupPage() {
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                </div>
+
+                                <Separator className="my-2" />
+
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-semibold uppercase text-muted-foreground">Yearly Semester Override Days</Label>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            className="h-7 text-xs flex items-center gap-1"
+                                            onClick={() => {
+                                                const next = [...standardCycles];
+                                                if (!next[i].years) next[i].years = [];
+                                                next[i].years.push({ year: new Date().getFullYear(), startDay: 1, endDay: 30 });
+                                                setStandardCycles(next);
+                                            }}
+                                        >
+                                            <PlusCircle className="h-3.5 w-3.5" /> Add Year Override
+                                        </Button>
+                                    </div>
+
+                                    {(cycle.years || []).length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">No yearly overrides configured. Defaults to the start and end of the respective months.</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {(cycle.years || []).map((yObj: any, yIdx: number) => (
+                                                <div key={yIdx} className="grid grid-cols-4 gap-2 items-end bg-background/50 p-2 border rounded-md">
+                                                    <div className="space-y-1 col-span-1">
+                                                        <Label className="text-[10px] text-muted-foreground">Year</Label>
+                                                        <Input 
+                                                            type="number" 
+                                                            className="h-8 text-xs px-2"
+                                                            value={yObj.year} 
+                                                            onChange={(e) => {
+                                                                const next = [...standardCycles];
+                                                                next[i].years[yIdx].year = Number(e.target.value);
+                                                                setStandardCycles(next);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1 col-span-1">
+                                                        <Label className="text-[10px] text-muted-foreground">Start Day</Label>
+                                                        <Input 
+                                                            type="number" 
+                                                            className="h-8 text-xs px-2"
+                                                            min={1} 
+                                                            max={31} 
+                                                            value={yObj.startDay} 
+                                                            onChange={(e) => {
+                                                                const next = [...standardCycles];
+                                                                next[i].years[yIdx].startDay = Number(e.target.value);
+                                                                setStandardCycles(next);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1 col-span-1">
+                                                        <Label className="text-[10px] text-muted-foreground">End Day</Label>
+                                                        <Input 
+                                                            type="number" 
+                                                            className="h-8 text-xs px-2"
+                                                            min={1} 
+                                                            max={31} 
+                                                            value={yObj.endDay} 
+                                                            onChange={(e) => {
+                                                                const next = [...standardCycles];
+                                                                next[i].years[yIdx].endDay = Number(e.target.value);
+                                                                setStandardCycles(next);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-end pb-0.5">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                            onClick={() => {
+                                                                const next = [...standardCycles];
+                                                                next[i].years = next[i].years.filter((_: any, idx: number) => idx !== yIdx);
+                                                                setStandardCycles(next);
+                                                            }}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
