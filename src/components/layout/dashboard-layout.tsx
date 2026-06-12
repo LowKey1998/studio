@@ -79,6 +79,7 @@ export default function DashboardLayout({
       unassignedCourses: 0
   });
   const [unfinalizedSems, setUnfinalizedSems] = React.useState<any[]>([]);
+  const [cyclesMissing, setCyclesMissing] = React.useState<boolean>(false);
   
   const handleLogout = async () => {
     try {
@@ -284,14 +285,16 @@ export default function DashboardLayout({
   React.useEffect(() => {
     if (!user || !userProfile) {
         setUnfinalizedSems([]);
+        setCyclesMissing(false);
         return;
     }
 
-    const isRegistrar = userProfile.subRoleNames?.some(name => name.toLowerCase() === 'registrar');
-    const hasAccess = userProfile.role === 'Admin' || isRegistrar;
+    const role = userProfile.role?.toLowerCase();
+    const hasAccess = role === 'admin' || role === 'staff';
 
     if (!hasAccess) {
         setUnfinalizedSems([]);
+        setCyclesMissing(false);
         return;
     }
 
@@ -301,20 +304,17 @@ export default function DashboardLayout({
 
     const handleData = () => {
         Promise.all([get(semsRef), get(calRef), get(intakesRef)]).then(([semsSnap, calSnap, intakesSnap]) => {
-            if (!semsSnap.exists() || !calSnap.exists() || !intakesSnap.exists()) {
-                setUnfinalizedSems([]);
-                return;
-            }
-
-            const sems = semsSnap.val();
-            const cal = calSnap.val();
-            const intakes = intakesSnap.val();
+            const sems = semsSnap.val() || {};
+            const cal = calSnap.val() || {};
+            const intakes = intakesSnap.val() || {};
 
             const unfinalizedList: any[] = [];
 
             Object.entries(intakes as Record<string, any>).forEach(([intakeId, intake]) => {
                 const intakeStartStr = parseIntakeDate(intake.name);
                 if (!intakeStartStr) return;
+
+                if (!cal.standardCycles || Object.keys(cal.standardCycles).length === 0) return;
 
                 const standing = calculateAcademicState(
                     intakeStartStr,
@@ -344,8 +344,22 @@ export default function DashboardLayout({
         });
     };
 
-    const unsub = onValue(semsRef, handleData);
-    return () => unsub();
+    const unsubSems = onValue(semsRef, handleData);
+
+    const unsubCal = onValue(calRef, (snap) => {
+        if (snap.exists()) {
+            const cal = snap.val();
+            const hasCycles = cal && cal.standardCycles && Object.keys(cal.standardCycles).length > 0;
+            setCyclesMissing(!hasCycles);
+        } else {
+            setCyclesMissing(true);
+        }
+    });
+
+    return () => {
+        unsubSems();
+        unsubCal();
+    };
   }, [user, userProfile]);
 
   const menuItems = React.useMemo(() => {
@@ -457,7 +471,21 @@ export default function DashboardLayout({
                                                         <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 animate-pulse" />
                                                         <span>Fees Pending Finalization</span>
                                                     </div>
-                                                    Students won't see invoices for the current standing semester.
+                                                    <p className="mb-1">Students won't see invoices for the following semester(s):</p>
+                                                    <ul className="list-disc pl-3 space-y-0.5 font-semibold text-[9px] text-red-800 max-h-24 overflow-y-auto">
+                                                        {unfinalizedSems.map(sem => (
+                                                            <li key={sem.id}>{sem.name}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                            {subItem.href === '/admin/academics/semester-setup' && cyclesMissing && (
+                                                <div className="mx-2 my-1.5 p-2 bg-orange-50 border border-orange-200 rounded-md text-[10px] text-orange-700 leading-tight">
+                                                    <div className="flex items-center gap-1 font-bold text-orange-800 mb-0.5">
+                                                        <AlertTriangle className="h-3.5 w-3.5 text-orange-600 shrink-0 animate-pulse" />
+                                                        <span>Academic Cycles Missing</span>
+                                                    </div>
+                                                    Institutional academic cycles have not been set up. Please define standard cycles.
                                                 </div>
                                             )}
                                             <SidebarMenuItem>
