@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
-import { ref, get, onValue, push, serverTimestamp } from 'firebase/database';
+import { ref, get, onValue, push, set, serverTimestamp } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck, Download, Calendar as CalendarIcon } from 'lucide-react';
@@ -55,7 +55,8 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StudentTimetablePage() {
-    const { user, userProfile, loading: authLoading } = useAuth();
+    const { user, userProfile: _userProfile, loading: authLoading } = useAuth();
+    const userProfile = _userProfile as any;
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [loading, setLoading] = React.useState(true);
@@ -342,7 +343,7 @@ export default function StudentTimetablePage() {
                     {loading ? (
                         <Skeleton className="h-96 w-full" />
                     ) : !hasSlots ? (
-                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined.</AlertDescription></Alert>
+                        <Alert><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined.</AlertDescription></Alert>
                     ) : timetable.length === 0 ? (
                         <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
                             <CalendarDays className="mx-auto h-12 w-12 opacity-20 mb-4" />
@@ -403,7 +404,7 @@ export default function StudentTimetablePage() {
                                                                                 <div className="mt-2 text-[9px] font-medium opacity-70 italic">{entry.semesterName}</div>
                                                                             </Link>
                                                                             
-                                                                            {entry.examDate && (
+                                                                             {entry.examDate && entry.examDate === dateStr && (
                                                                                 <div className="p-2 rounded-md border-2 border-red-200 bg-red-50 animate-in zoom-in fade-in duration-500 shadow-sm">
                                                                                     <div className="flex items-center gap-1.5 mb-1">
                                                                                         <FileCheck className="h-3 w-3 text-red-600" />

@@ -441,15 +441,17 @@ export default function AdminExamTimetablePage() {
                                                         {examsInSlot.map(exam => {
                                                             const quiz = getQuizForCourse(exam.courseId);
                                                             return (
-                                                                <div key={exam.id} className={cn("p-2 rounded-lg border bg-background shadow-md relative transition-all", exam.isPublished ? "border-green-500 ring-1 ring-green-100" : "border-orange-300")} onClick={(e) => e.stopPropagation()}>
+                                                                <div key={exam.id} className={cn("p-2.5 rounded-lg border bg-background shadow-md relative transition-all", exam.isPublished ? "border-green-400 bg-green-50/5 ring-1 ring-green-100" : "border-amber-300 bg-amber-50/5")} onClick={(e) => e.stopPropagation()}>
                                                                     <div className="flex justify-between items-start gap-1">
                                                                         <div className="flex-1">
+                                                                            <div className="flex items-center gap-1.5 mb-1.5">
+                                                                                <Badge className={cn("text-[8px] h-4 uppercase font-black border px-1.5 py-0", exam.isPublished ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-100" : "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100")}>
+                                                                                    {exam.isPublished ? 'Live' : 'Draft'}
+                                                                                </Badge>
+                                                                                {exam.isOnline && <Badge className="text-[8px] h-4 uppercase font-black border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-50 px-1.5 py-0">Online</Badge>}
+                                                                            </div>
                                                                             <p className="font-bold text-[10px] text-primary leading-tight">{exam.courseCode}: {exam.courseName}</p>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {exam.venue}</div>
-                                                                            <div className="mt-2 flex flex-wrap gap-1">
-                                                                                <Badge variant={exam.isPublished ? 'default' : 'outline'} className="text-[8px] h-4 uppercase">{exam.isPublished ? 'Live' : 'Draft'}</Badge>
-                                                                                {exam.isOnline && <Badge variant="outline" className="text-[8px] h-4 uppercase border-blue-200 text-blue-700 bg-blue-50">Online</Badge>}
-                                                                            </div>
                                                                         </div>
                                                                         <div className="flex flex-col gap-1">
                                                                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleTogglePublish(selectedSemesterId, exam.id, !!exam.isPublished)} title={exam.isPublished ? "Hide" : "Publish"}>
