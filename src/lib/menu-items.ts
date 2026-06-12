@@ -398,6 +398,9 @@ export const studentMenuItems = [
             { href: '/student/clinicals/rotations', label: 'Ward Rotations', icon: MapPin },
             { href: '/student/clinicals/logbook', label: 'Clinical Logbook', icon: Book },
             { href: '/student/clinicals/evaluations', label: 'Evaluations & Feedback', icon: ClipboardList },
+            { href: '/student/clinicals/placements', label: 'Community Placements', icon: MapPin },
+            { href: '/student/clinicals/feedback', label: 'Feedback Forms', icon: FileQuestion },
+            { href: '/student/clinicals/assessments', label: 'Clinical Assessments', icon: ClipboardCheck },
         ]
     },
     {
@@ -431,7 +434,7 @@ export const studentMenuItems = [
         icon: FileBadge,
         items: [
             { href: '/student/graduation/clearance', label: 'Graduation Clearance', icon: CheckCircle2 },
-            { href: '/admin/addons/alumni', label: 'Alumni Connect', icon: Users2 },
+            { href: '/student/graduation/alumni', label: 'Alumni Connect', icon: Users2 },
         ]
     }
   ];
