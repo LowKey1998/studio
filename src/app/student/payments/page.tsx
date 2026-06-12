@@ -109,6 +109,7 @@ type PaymentSummary = {
         optionalItems?: any[];
     };
     scholarshipInfo?: { name: string; percentage: number };
+    scholarshipStatus?: 'Pending' | 'Approved' | 'Denied';
     regSource?: string;
     regStatus?: string;
 };
@@ -276,6 +277,7 @@ export default function StudentPaymentsPage() {
                         isProvisional,
                         breakdown: billingResults.breakdown,
                         scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined,
+                        scholarshipStatus: reg.scholarshipStatus || (scholarId ? 'Pending' : undefined),
                         regSource: reg.source || 'manual',
                         regStatus: reg.status || 'Pending Approval'
                     };
@@ -333,10 +335,40 @@ export default function StudentPaymentsPage() {
             
             autoTable(doc, { startY: 55, head: [['Code', 'Description', 'Amount']], body: finalBody, theme: 'striped', headStyles: { fillColor: [34, 34, 34] }});
 
-            const finalY = (doc as any).lastAutoTable.finalY + 15;
-            doc.setFontSize(14); doc.text("Payments Received", 14, finalY);
+            let currentY = (doc as any).lastAutoTable.finalY + 10;
+
+            if (p.scholarshipStatus) {
+                const normStatus = p.scholarshipStatus === 'Denied' ? 'Rejected' : p.scholarshipStatus;
+                let explanation = '';
+                if (normStatus === 'Approved') {
+                    explanation = `Approved: The scholarship has been approved and a waiver of ${p.scholarshipInfo?.percentage || 0}% has been applied to the tuition.`;
+                } else if (normStatus === 'Pending') {
+                    explanation = `Pending Audit: A scholarship application has been submitted and is currently awaiting verification. No waiver is applied yet.`;
+                } else {
+                    explanation = `Rejected: The scholarship application was rejected or denied. Full tuition fees are required.`;
+                }
+
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'bold');
+                doc.text("Scholarship Information", 14, currentY);
+                currentY += 6;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.text(`Scholarship Name: ${p.scholarshipInfo?.name || 'Academic Scholarship'}`, 14, currentY);
+                currentY += 5;
+                doc.text(`Status: ${normStatus}`, 14, currentY);
+                currentY += 5;
+
+                const splitExplain = doc.splitTextToSize(`Explanation: ${explanation}`, 182);
+                doc.text(splitExplain, 14, currentY);
+                currentY += (splitExplain.length * 4.5) + 5;
+            }
+
+            doc.setFontSize(14); 
+            doc.setFont('helvetica', 'bold');
+            doc.text("Payments Received", 14, currentY);
             const txRows = p.transactions.map(t => [format(parseISO(t.paymentDate), 'dd MMM yyyy'), t.transactionId, t.method || 'Online', `ZMW ${t.amount.toFixed(2)}`]);
-            autoTable(doc, { startY: finalY + 5, head: [['Date', 'Ref', 'Method', 'Amount']], body: txRows.length > 0 ? txRows : [['-', 'No payments', '-', 'ZMW 0.00']], theme: 'grid' });
+            autoTable(doc, { startY: currentY + 5, head: [['Date', 'Ref', 'Method', 'Amount']], body: txRows.length > 0 ? txRows : [['-', 'No payments', '-', 'ZMW 0.00']], theme: 'grid' });
 
             const summaryY = (doc as any).lastAutoTable.finalY + 10;
             doc.setFontSize(12); doc.text(`Total Paid: ZMW ${p.totalPaid.toFixed(2)}`, 190, summaryY, { align: 'right' });

@@ -106,6 +106,10 @@ type StudentPaymentInfo = {
     transactions: Transaction[];
     paymentPlanName?: string;
     isCurrentStanding?: boolean;
+    scholarshipInfo?: { name: string; percentage: number };
+    scholarshipStatus?: 'Pending' | 'Approved' | 'Denied';
+    studyYear?: number;
+    semesterPhase?: number;
 };
 
 type PaymentRecord = {
@@ -146,7 +150,7 @@ type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; tuitionFee?: number; mandatoryFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFeeValue?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 
-type OptionGroup = { groupName: string; items: { value: string; label: string } };
+type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
 
 const getCoursesFromReg = (raw: any): string[] => {
     if (!raw) return [];
@@ -447,7 +451,11 @@ export default function PaymentsManagementPage() {
                     breakdown: billingResults.breakdown,
                     isProvisional,
                     transactions: matchedTransactions,
-                    isCurrentStanding
+                    isCurrentStanding,
+                    scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined,
+                    scholarshipStatus: reg.scholarshipStatus || (scholarId ? 'Pending' : undefined),
+                    studyYear: semesterInfo.year,
+                    semesterPhase: semesterInfo.semesterInYear
                 });
             }
         }
@@ -581,7 +589,9 @@ export default function PaymentsManagementPage() {
                     filename: `Receipt_${tx.transactionId}.pdf`,
                     content: pdfBase64,
                     contentType: 'application/pdf'
-                }]
+                }],
+                log: true,
+                userIds: [info.userId]
             });
             toast({ title: 'Receipt Emailed' });
         } catch (e: any) {
@@ -594,11 +604,95 @@ export default function PaymentsManagementPage() {
     const handleEmailInvoice = async (info: StudentPaymentInfo) => {
         setActionLoading(`email-inv-${info.userId}`);
         try {
+            const [invoiceSnap, regSnap, semesterSnap, coursesSnap] = await Promise.all([
+                get(ref(db, `invoices/${info.userId}/${info.invoiceId}`)),
+                get(ref(db, `registrations/${info.userId}/${info.semesterId}`)),
+                get(ref(db, `semesters/${info.semesterId}`)),
+                get(ref(db, 'courses'))
+            ]);
+
+            const invoice = invoiceSnap.val();
+            const reg = regSnap.val();
+            const semester = semesterSnap.val();
+            const coursesData = coursesSnap.val() || {};
+
             const doc = new jsPDF();
-            doc.setFontSize(20); doc.text(institutionSettings.name, 14, 25);
-            doc.setFontSize(12); doc.text(`Invoice Statement: ${info.semesterName}`, 14, 35);
-            doc.text(`Student: ${info.studentName} (${info.studentId})`, 14, 45);
-            doc.text(`Current Balance: ZMW ${info.balance.toFixed(2)}`, 14, 55);
+            if (institutionSettings.logoUrl) {
+                try { 
+                    const img = document.createElement('img');
+                    img.src = institutionSettings.logoUrl;
+                    doc.addImage(img, 'PNG', 14, 15, 20, 20); 
+                } catch (e) {}
+            }
+            doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+            doc.setFontSize(12); doc.text('Official Invoice & Statement', 190, 25, { align: 'right' });
+            doc.setFontSize(10);
+            doc.text(`Student: ${info.studentName} (${info.studentId})`, 14, 40);
+            doc.text(`Invoice ID: ${info.invoiceId || 'N/A'}`, 190, 40, { align: 'right' });
+            doc.text(`Semester: ${info.semesterName}`, 14, 45);
+
+            const scholarPerc = Number(info.scholarshipInfo?.percentage || 0);
+            const coursesList = invoice?.courses || reg?.courses || [];
+            const body = coursesList.map((id: string) => {
+                const cost = coursesData[id]?.cost || 0;
+                const finalCost = invoice?.applyScholarship ? cost * (1 - (scholarPerc/100)) : cost;
+                return [
+                    coursesData[id]?.code || 'N/A', 
+                    `Tuition: ${coursesData[id]?.name || 'Unknown'}${invoice?.applyScholarship ? ` (${scholarPerc}% Waiver)` : ''}`, 
+                    `ZMW ${finalCost.toFixed(2)}`
+                ];
+            });
+
+            const fees = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map((f: any) => ['', `Mandatory Fee: ${f.name}`, `ZMW ${f.amount.toFixed(2)}`]) : [];
+            const optional = semester?.optionalFees && invoice?.optionalFees ? invoice.optionalFees.map((id: string) => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, `ZMW ${semester.optionalFees![id]?.amount.toFixed(2)}`]) : [];
+            const finalBody = [...body, ...fees, ...optional];
+            
+            autoTable(doc, { 
+                startY: 55, 
+                head: [['Code', 'Description', 'Amount']], 
+                body: finalBody, 
+                theme: 'striped', 
+                headStyles: { fillColor: [34, 34, 34] }
+            });
+
+            let currentY = (doc as any).lastAutoTable.finalY + 10;
+
+            if (info.scholarshipStatus) {
+                const normStatus = info.scholarshipStatus === 'Denied' ? 'Rejected' : info.scholarshipStatus;
+                let explanation = '';
+                if (normStatus === 'Approved') {
+                    explanation = `Approved: The scholarship has been approved and a waiver of ${info.scholarshipInfo?.percentage || 0}% has been applied to the tuition.`;
+                } else if (normStatus === 'Pending') {
+                    explanation = `Pending Audit: A scholarship application has been submitted and is currently awaiting verification. No waiver is applied yet.`;
+                } else {
+                    explanation = `Rejected: The scholarship application was rejected or denied. Full tuition fees are required.`;
+                }
+
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'bold');
+                doc.text("Scholarship Information", 14, currentY);
+                currentY += 6;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.text(`Scholarship Name: ${info.scholarshipInfo?.name || 'Academic Scholarship'}`, 14, currentY);
+                currentY += 5;
+                doc.text(`Status: ${normStatus}`, 14, currentY);
+                currentY += 5;
+
+                const splitExplain = doc.splitTextToSize(`Explanation: ${explanation}`, 182);
+                doc.text(splitExplain, 14, currentY);
+                currentY += (splitExplain.length * 4.5) + 5;
+            }
+
+            doc.setFontSize(14); 
+            doc.setFont('helvetica', 'bold');
+            doc.text("Payments Received", 14, currentY);
+            const txRows = (info.transactions || []).map(t => [format(parseISO(t.paymentDate), 'dd MMM yyyy'), t.transactionId, t.method || 'Online', `ZMW ${t.amount.toFixed(2)}`]);
+            autoTable(doc, { startY: currentY + 5, head: [['Date', 'Ref', 'Method', 'Amount']], body: txRows.length > 0 ? txRows : [['-', 'No payments', '-', 'ZMW 0.00']], theme: 'grid' });
+
+            const summaryY = (doc as any).lastAutoTable.finalY + 10;
+            doc.setFontSize(12); doc.text(`Total Paid: ZMW ${info.totalPaid.toFixed(2)}`, 190, summaryY, { align: 'right' });
+            doc.text(`BALANCE: ZMW ${info.balance.toFixed(2)}`, 190, summaryY + 8, { align: 'right' });
             
             const pdfBase64 = generatePdfBlob(doc);
             await sendEmail({
@@ -609,7 +703,9 @@ export default function PaymentsManagementPage() {
                     filename: `Invoice_${info.semesterName?.replace(/\s+/g, '_')}.pdf`,
                     content: pdfBase64,
                     contentType: 'application/pdf'
-                }]
+                }],
+                log: true,
+                userIds: [info.userId]
             });
             toast({ title: 'Invoice Emailed' });
         } catch (e: any) {
@@ -619,7 +715,7 @@ export default function PaymentsManagementPage() {
         }
     };
 
-    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
+        const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key === key) {
                 const updatedRow = { ...row, [field]: value };
@@ -656,10 +752,33 @@ export default function PaymentsManagementPage() {
                     }
                 }
 
+                if (field === 'year' && row.userId) {
+                    const studentProfile = allUsers[row.userId];
+                    const intakeId = studentProfile?.intakeId;
+                    const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
+                    updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === value);
+                    const defaultSem = updatedRow.availableSemesters[0];
+                    if (defaultSem) {
+                        updatedRow.semesterId = defaultSem.id;
+                        updateDerivedFields(row.userId, defaultSem.id);
+                    }
+                }
+
                 return updatedRow;
             }
             return row;
         }));
+    };
+
+    const handleAddPaymentRow = () => {
+        setBulkPaymentRows(prev => [
+            ...prev,
+            { key: Date.now() + Math.random(), amount: '', comment: '', allocations: [] }
+        ]);
+    };
+
+    const handleRemovePaymentRow = (key: number) => {
+        setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
     const handleSaveAllBulk = async () => {
@@ -676,12 +795,14 @@ export default function PaymentsManagementPage() {
                 if (row.isNewStudent) {
                     const reqRef = push(ref(db, 'studentCreationRequests'));
                     const txRef = push(ref(db, 'transactions'));
+                    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
                     updates[`studentCreationRequests/${reqRef.key}`] = { tempId: row.tempStudentId || null, tempName: row.tempStudentName || null, targetSemesterId: row.semesterId || null, amountPaid: amount, status: 'pending', timestamp: Date.now() };
-                    updates[`transactions/${txRef.key}`] = { transactionId: `DEP-${Date.now()}`, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash', recordedBy: userData.name, requestId: reqRef.key, senderName: row.tempStudentName || null };
+                    updates[`transactions/${txRef.key}`] = { transactionId: `DEP-${Date.now()}-${randomSuffix}`, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash', recordedBy: userData.name, requestId: reqRef.key, senderName: row.tempStudentName || null };
                 } else if (row.userId) {
                     const txRef = push(ref(db, 'transactions'));
+                    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
                     updates[`transactions/${txRef.key}`] = { 
-                        transactionId: `CASH-${Date.now()}`, 
+                        transactionId: `CASH-${Date.now()}-${randomSuffix}`, 
                         userId: row.userId, 
                         semesterId: row.semesterId,
                         invoiceId: row.invoiceId || null, 
@@ -835,7 +956,12 @@ export default function PaymentsManagementPage() {
 
             <Card className="shadow-md">
                 <CardHeader className="border-b">
-                    <div><CardTitle>Receivables Ledger</CardTitle><CardDescription>Audit student financial compliance.</CardDescription></div>
+                    <div>
+                        <CardTitle>Receivables Ledger</CardTitle>
+                        <CardDescription>
+                            Audit student financial compliance. Note: Payments are targeted toward specific study periods (Institutional Academic Year and Semester Phase).
+                        </CardDescription>
+                    </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
@@ -894,6 +1020,11 @@ export default function PaymentsManagementPage() {
                                                     {info.paymentPlanName ? <Badge variant="outline" className="h-4 text-[8px] uppercase border-primary/20 bg-primary/5">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="h-4 text-[8px] uppercase">Plan Not Set</Badge>}
                                                     <span className="text-[9px] font-bold text-muted-foreground opacity-60 truncate">{info.semesterName}</span>
                                                 </div>
+                                                <div className="text-[9px] text-muted-foreground font-medium flex flex-wrap items-center gap-1 mt-0.5">
+                                                    <span>Target Period: <strong className="text-foreground">Year {info.studyYear || 'N/A'}</strong></span>
+                                                    <span>•</span>
+                                                    <span>Phase: <strong className="text-foreground">Semester {info.semesterPhase || 'N/A'}</strong></span>
+                                                </div>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
@@ -931,13 +1062,38 @@ export default function PaymentsManagementPage() {
                             <Card key={row.key} className="border-l-4 border-l-primary relative">
                                 <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div className="space-y-4">
-                                        <div className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Recipient</Label></div><div className="flex items-center gap-2"><Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} /><span className="text-[10px] font-black uppercase text-primary">New Student?</span></div></div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div>
+                                                <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Recipient</Label>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
+                                                    <span className="text-[10px] font-black uppercase text-primary">New Student?</span>
+                                                </div>
+                                                {bulkPaymentRows.length > 1 && (
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={() => handleRemovePaymentRow(row.key)}>
+                                                        <X className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
                                         {row.isNewStudent ? (
                                             <div className="grid grid-cols-2 gap-3"><Input placeholder="Name" value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} /><Input placeholder="Proposed ID" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} /></div>
                                         ) : (
                                             <div className="space-y-2">
                                                 <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student..." />
-                                                {row.academicStanding && <Badge variant="outline" className="text-[9px] uppercase font-bold bg-orange-50 text-orange-700 border-orange-200">Record Selected: {row.academicStanding}</Badge>}
+                                                {row.academicStanding && (
+                                                    <div className="mt-2 text-[10px] bg-orange-50/80 text-orange-800 border border-orange-200/60 rounded-lg p-2.5 space-y-1">
+                                                        <p className="font-bold flex items-center gap-1">
+                                                            <Info className="h-3.5 w-3.5 text-orange-600" /> Target Period: {row.academicStanding}
+                                                        </p>
+                                                        <p className="text-muted-foreground leading-relaxed text-[9px]">
+                                                            Please note: Any amount processed here will be recorded and allocated towards covering this student's outstanding fees specifically for the <strong className="text-orange-950 font-bold">{row.academicStanding}</strong> semester phase.
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         <div className="grid grid-cols-2 gap-3">
@@ -974,7 +1130,14 @@ export default function PaymentsManagementPage() {
                             </Card>
                         )})}
                     </div>
-                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg"><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 font-black uppercase text-xs">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4 mr-2" />}Process Batch</Button></DialogFooter>
+                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <Button variant="outline" onClick={handleAddPaymentRow} disabled={formLoading} className="h-12 px-6 font-bold text-xs">
+                            <Plus className="mr-2 h-4 w-4" /> Add Payment Row
+                        </Button>
+                        <Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 font-black uppercase text-xs">
+                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4 mr-2" />}Process Batch ({bulkPaymentRows.length})
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
