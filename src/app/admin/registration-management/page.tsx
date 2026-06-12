@@ -573,7 +573,15 @@ export default function RegistrationManagementPage() {
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
             switch(i) {
-                case 0: setAllIntakes(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
+                case 0: {
+                    const sorted = Object.keys(data).map(id => ({ id, ...data[id] })).sort((a, b) => {
+                        const dateA = parseIntakeDate(a.name) || '';
+                        const dateB = parseIntakeDate(b.name) || '';
+                        return dateA.localeCompare(dateB);
+                    });
+                    setAllIntakes(sorted);
+                    break;
+                }
                 case 1: setAllProgrammes(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 2: setAllCourses(data); break;
                 case 3: setAllCoursePaths(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
