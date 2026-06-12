@@ -163,14 +163,10 @@ export default function RegisterForSemesterPage() {
                     throw new Error(`Invalid registration link. You are not authorized for this intake.`);
                 }
 
-                if (!coursePathsSnap.exists()) throw new Error("Course paths have not been set up by the administration.");
-
-                const allCoursePathsData = coursePathsSnap.val();
+                const allCoursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
                 const userPath = Object.values(allCoursePathsData as Record<string, CoursePath>).find(
                     (p: CoursePath) => p.intakeId === userDataVal.intakeId && p.programmeId === userDataVal.programmeId
                 );
-                
-                if (!userPath) throw new Error("A course path has not been defined for your intake and programme.");
 
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
@@ -192,21 +188,33 @@ export default function RegisterForSemesterPage() {
                 if(!foundSemesterEntry) throw new Error(`Semester details could not be found.`);
                 const [semesterId, semesterData] = foundSemesterEntry;
 
-                if (!userPath.semesters || !userPath.semesters[semesterId]) {
+                const myExisting = myRegsSnap.val()?.[semesterId];
+
+                if (!userPath && !myExisting) {
+                    throw new Error("A course path has not been defined for your intake and programme.");
+                }
+
+                if (userPath && (!userPath.semesters || !userPath.semesters[semesterId]) && !myExisting) {
                     throw new Error("The selected semester is not part of your defined course path.");
                 }
                 
                 const activePolicy = semesterData.billingPolicy || allSettings.institution?.billingPolicy || 'course';
                 setBillingPolicy(activePolicy);
-                setSemesterDetails({id: semesterId, ...semesterData});
+                setSemesterDetails({ ...semesterData, id: semesterId });
 
                 if(allSettings.registrationPolicy?.lateRegistrationFee > 0 && semesterData.lateRegistrationActive) {
                     setIsLateRegistration(true);
                     setLateFee(allSettings.registrationPolicy.lateRegistrationFee);
                 }
 
-                const semesterCourseIds = userPath.semesters[semesterId]?.courses || [];
-                const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
+                const existingCourseIds = getCoursesFromReg(myExisting?.courses);
+                const semesterCourseIds = Array.from(new Set([
+                    ...(userPath?.semesters?.[semesterId]?.courses || []),
+                    ...existingCourseIds
+                ]));
+                const semesterCourses = semesterCourseIds
+                    .map((id: string) => ({ id, ...allCourses[id] }))
+                    .filter((c: any) => c.name);
                 setCoursesForSemester(semesterCourses);
                 
                 if (semesterData.paymentPlanIds) {
@@ -218,7 +226,6 @@ export default function RegisterForSemesterPage() {
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
 
-                const myExisting = myRegsSnap.val()?.[semesterId];
                 if (myExisting) {
                     setExistingRegistration(myExisting);
                     const enrolledCourseIds = getCoursesFromReg(myExisting.courses);
