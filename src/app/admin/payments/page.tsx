@@ -110,6 +110,7 @@ type StudentPaymentInfo = {
     scholarshipStatus?: 'Pending' | 'Approved' | 'Denied';
     studyYear?: number;
     semesterPhase?: number;
+    isUpcomingStanding?: boolean;
 };
 
 type PaymentRecord = {
@@ -263,6 +264,7 @@ export default function PaymentsManagementPage() {
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('current');
+    const [activeTabSemesterId, setActiveTabSemesterId] = React.useState<string>('');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [balanceStatusFilter, setBalanceStatusFilter] = React.useState('all');
     const [minBalance, setMinBalance] = React.useState('');
@@ -284,12 +286,54 @@ export default function PaymentsManagementPage() {
 
     const [formLoading, setFormLoading] = React.useState(false);
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '', billingPolicy: 'course' });
+    const [academicCalendar, setAcademicCalendar] = React.useState<any>(null);
 
     const { toast } = useToast();
 
     const getCurrentServerDate = React.useCallback(() => {
         return new Date(Date.now() + serverTimeOffset);
     }, [serverTimeOffset]);
+
+    const handleSemesterFilterChange = (val: string) => {
+        setSemesterFilter(val);
+        if (val.startsWith('intake-')) {
+            const intakeId = val.split('intake-')[1];
+            const intakeSemesters = semesters.filter(s => s.intakeId === intakeId && s.status !== 'Archived');
+            
+            // Calculate current standing for this intake
+            const intake = allIntakes.find(i => i.id === intakeId);
+            const intakeName = intake?.name;
+            const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
+            const now = getCurrentServerDate();
+            
+            let currentStanding: { year: number, semester: number } | null = null;
+            if (intakeStartStr && academicCalendar) {
+                currentStanding = calculateAcademicState(
+                    intakeStartStr,
+                    now,
+                    academicCalendar.standardCycles || [],
+                    Object.values(academicCalendar.anomalies || {})
+                );
+            }
+
+            let preselectedSem = null;
+            if (currentStanding) {
+                preselectedSem = intakeSemesters.find(s => 
+                    s.year === currentStanding!.year && 
+                    s.semesterInYear === currentStanding!.semester
+                );
+            }
+
+            const activeSem = preselectedSem || intakeSemesters.find(s => s.status === 'Open') || intakeSemesters[0];
+            if (activeSem) {
+                setActiveTabSemesterId(activeSem.id);
+            } else {
+                setActiveTabSemesterId('');
+            }
+        } else {
+            setActiveTabSemesterId('');
+        }
+    };
 
     React.useEffect(() => {
         const offsetRef = ref(db, '.info/serverTimeOffset');
@@ -437,6 +481,13 @@ export default function PaymentsManagementPage() {
                 const futureDeadline = semDeadlines.find(ev => isAfter(parseISO(ev.date), now));
                 if (futureDeadline) nextInstallmentDue = futureDeadline.date;
 
+                const cyclesPerYear = calSettings?.standardCycles?.length || 2;
+                const upcomingStanding = currentStanding ? {
+                    year: currentStanding.semester >= cyclesPerYear ? currentStanding.year + 1 : currentStanding.year,
+                    semester: currentStanding.semester >= cyclesPerYear ? 1 : currentStanding.semester + 1
+                } : null;
+                const isUpcomingStanding = !!(upcomingStanding && semesterInfo.year === upcomingStanding.year && semesterInfo.semesterInYear === upcomingStanding.semester);
+
                 const isCurrentStanding = !!(currentStanding && semesterInfo.year === currentStanding.year && semesterInfo.semesterInYear === currentStanding.semester);
 
                 studentPaymentMap.set(`${userId}-${semesterId}`, {
@@ -452,6 +503,7 @@ export default function PaymentsManagementPage() {
                     isProvisional,
                     transactions: matchedTransactions,
                     isCurrentStanding,
+                    isUpcomingStanding,
                     scholarshipInfo: scholarship ? { name: scholarship.name, percentage: scholarPerc } : undefined,
                     scholarshipStatus: reg.scholarshipStatus || (scholarId ? 'Pending' : undefined),
                     studyYear: semesterInfo.year,
@@ -493,7 +545,12 @@ export default function PaymentsManagementPage() {
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { store.financialSettings = snapshot.val(); computeDerived(store); }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.academicCalendar, (s) => { store.academicCalendar = s.val() || {}; computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.academicCalendar, (s) => { 
+            const val = s.val() || {};
+            setAcademicCalendar(val);
+            store.academicCalendar = val; 
+            computeDerived(store); 
+        }));
         unsubs.push(onValue(dataRefs.scholarships, (s) => { store.scholarships = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.institution, (s) => { 
             const data = s.val() || { name: 'Edutrack360' };
@@ -513,11 +570,16 @@ export default function PaymentsManagementPage() {
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
             
-            const semesterMatch = semesterFilter === 'all' 
-                ? true 
-                : semesterFilter === 'current' 
-                    ? p.isCurrentStanding 
-                    : p.semesterId === semesterFilter;
+            let semesterMatch = true;
+            if (semesterFilter === 'current') {
+                semesterMatch = !!p.isCurrentStanding;
+            } else if (semesterFilter === 'upcoming') {
+                semesterMatch = !!p.isUpcomingStanding;
+            } else if (semesterFilter.startsWith('intake-')) {
+                semesterMatch = p.semesterId === activeTabSemesterId;
+            } else if (semesterFilter !== 'all') {
+                semesterMatch = p.semesterId === semesterFilter;
+            }
             
             let balanceMatch = true;
             if (balanceStatusFilter === 'cleared') balanceMatch = p.balance <= 0.01;
@@ -532,7 +594,7 @@ export default function PaymentsManagementPage() {
 
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && balanceMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, balanceStatusFilter, minBalance, maxBalance, getCurrentServerDate]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, activeTabSemesterId, intakeFilter, balanceStatusFilter, minBalance, maxBalance, getCurrentServerDate]);
 
     const generatePdfBlob = (doc: jsPDF) => {
         return doc.output('datauristring').split('base64,')[1];
@@ -722,46 +784,114 @@ export default function PaymentsManagementPage() {
                 
                 const updateDerivedFields = (userId: string, semId: string) => {
                     const info = paymentInfos.find(p => p.userId === userId && p.semesterId === semId);
+                    const sem = semesters.find(s => s.id === semId);
                     if (info) {
                         updatedRow.totalDue = info.totalDue;
                         updatedRow.totalPaid = info.totalPaid;
                         updatedRow.breakdown = info.breakdown;
                         updatedRow.academicStanding = info.semesterName;
                         updatedRow.invoiceId = info.invoiceId;
+                    } else if (sem) {
+                        updatedRow.totalDue = sem.tuitionFee || 0;
+                        updatedRow.totalPaid = 0;
+                        updatedRow.breakdown = {
+                            tuition: sem.tuitionFee || 0,
+                            scholarship: 0,
+                            mandatory: 0,
+                            optional: 0,
+                            late: 0,
+                            mandatoryItems: Object.values(sem.mandatoryFees || {}),
+                            optionalItems: []
+                        };
+                        updatedRow.academicStanding = sem.name;
+                        updatedRow.invoiceId = "";
                     }
                 };
 
-                if (field === 'userId' || field === 'semesterId') {
-                    const uid = field === 'userId' ? value : row.userId;
-                    const sid = field === 'semesterId' ? value : row.semesterId;
-                    if (uid && sid) updateDerivedFields(uid, sid);
+                if (field === 'isNewStudent') {
+                    if (value) {
+                        updatedRow.userId = undefined;
+                        updatedRow.tempStudentName = '';
+                        updatedRow.tempStudentId = '';
+                        const activeSemesters = semesters.filter(s => s.status !== 'Archived');
+                        updatedRow.availableYears = Array.from(new Set(activeSemesters.map(s => String(s.year)))).sort();
+                        const defaultYear = updatedRow.availableYears[0];
+                        if (defaultYear) {
+                            updatedRow.year = defaultYear;
+                            updatedRow.availableSemesters = activeSemesters.filter(s => String(s.year) === defaultYear);
+                            const defaultSem = updatedRow.availableSemesters[0];
+                            if (defaultSem) {
+                                updatedRow.semesterId = defaultSem.id;
+                                updateDerivedFields('', defaultSem.id);
+                            }
+                        }
+                    } else {
+                        updatedRow.userId = undefined;
+                        updatedRow.semesterId = undefined;
+                        updatedRow.year = undefined;
+                        updatedRow.availableYears = [];
+                        updatedRow.availableSemesters = [];
+                        updatedRow.academicStanding = undefined;
+                        updatedRow.totalDue = undefined;
+                        updatedRow.totalPaid = undefined;
+                        updatedRow.breakdown = undefined;
+                        updatedRow.invoiceId = undefined;
+                    }
                 }
 
                 if (field === 'userId') {
-                    const studentProfile = allUsers[value];
-                    const intakeId = studentProfile?.intakeId;
-                    const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
-                    updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
-                    
-                    const latestSemester = studentIntakeSemesters.sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear)[0];
-                    if (latestSemester) {
-                        updatedRow.semesterId = latestSemester.id;
-                        updatedRow.year = String(latestSemester.year);
-                        updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
-                        updateDerivedFields(value, latestSemester.id);
+                    if (value) {
+                        const studentProfile = allUsers[value];
+                        const intakeId = studentProfile?.intakeId;
+                        const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
+                        updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
+                        
+                        const latestSemester = studentIntakeSemesters.sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear)[0];
+                        if (latestSemester) {
+                            updatedRow.semesterId = latestSemester.id;
+                            updatedRow.year = String(latestSemester.year);
+                            updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
+                            updateDerivedFields(value, latestSemester.id);
+                        }
+                    } else {
+                        updatedRow.semesterId = undefined;
+                        updatedRow.year = undefined;
+                        updatedRow.availableYears = [];
+                        updatedRow.availableSemesters = [];
+                        updatedRow.academicStanding = undefined;
                     }
                 }
 
-                if (field === 'year' && row.userId) {
-                    const studentProfile = allUsers[row.userId];
-                    const intakeId = studentProfile?.intakeId;
-                    const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
-                    updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === value);
-                    const defaultSem = updatedRow.availableSemesters[0];
-                    if (defaultSem) {
-                        updatedRow.semesterId = defaultSem.id;
-                        updateDerivedFields(row.userId, defaultSem.id);
+                if (field === 'year') {
+                    if (row.isNewStudent) {
+                        const activeSemesters = semesters.filter(s => s.status !== 'Archived');
+                        updatedRow.availableSemesters = activeSemesters.filter(s => String(s.year) === value);
+                        const defaultSem = updatedRow.availableSemesters[0];
+                        if (defaultSem) {
+                            updatedRow.semesterId = defaultSem.id;
+                            updateDerivedFields('', defaultSem.id);
+                        } else {
+                            updatedRow.semesterId = undefined;
+                            updatedRow.academicStanding = undefined;
+                        }
+                    } else if (row.userId) {
+                        const studentProfile = allUsers[row.userId];
+                        const intakeId = studentProfile?.intakeId;
+                        const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
+                        updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === value);
+                        const defaultSem = updatedRow.availableSemesters[0];
+                        if (defaultSem) {
+                            updatedRow.semesterId = defaultSem.id;
+                            updateDerivedFields(row.userId, defaultSem.id);
+                        } else {
+                            updatedRow.semesterId = undefined;
+                            updatedRow.academicStanding = undefined;
+                        }
                     }
+                }
+
+                if (field === 'semesterId') {
+                    updateDerivedFields(row.isNewStudent ? '' : (row.userId || ''), value);
                 }
 
                 return updatedRow;
@@ -966,13 +1096,13 @@ export default function PaymentsManagementPage() {
                 <CardContent className="pt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester Phase</Label>
-                            <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+                            <Select value={semesterFilter} onValueChange={handleSemesterFilterChange}>
                                 <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Semesters</SelectItem>
                                     <SelectItem value="current" className="font-bold text-primary">Current Phase Only</SelectItem>
+                                    <SelectItem value="upcoming" className="text-orange-600 font-bold">Upcoming Phase Only</SelectItem>
                                     <Separator className="my-1"/>
-                                    {semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    {allIntakes.map(i => <SelectItem key={i.id} value={`intake-${i.id}`}>{i.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -996,6 +1126,34 @@ export default function PaymentsManagementPage() {
                         </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search Roster</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20 text-xs" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
+
+                    {semesterFilter.startsWith('intake-') && (
+                        <div className="p-4 border rounded-xl bg-primary/5 space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label className="text-[9px] font-black uppercase tracking-widest text-primary">Intake Semester Phase Offerings</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {semesters.filter(s => s.intakeId === semesterFilter.split('intake-')[1] && s.status !== 'Archived').sort((a, b) => a.year - b.year || a.semesterInYear - b.semesterInYear).map(sem => {
+                                    const isSelected = sem.id === activeTabSemesterId;
+                                    return (
+                                        <Button
+                                            key={sem.id}
+                                            variant={isSelected ? "default" : "outline"}
+                                            size="sm"
+                                            className="h-8 text-xs font-bold gap-1.5"
+                                            onClick={() => setActiveTabSemesterId(sem.id)}
+                                        >
+                                            {sem.name}
+                                            {sem.status === 'Open' && (
+                                                <Badge className="h-3 px-1 text-[7px] bg-green-500 hover:bg-green-600 text-white font-black uppercase border-0">Active</Badge>
+                                            )}
+                                        </Button>
+                                    );
+                                })}
+                                {semesters.filter(s => s.intakeId === semesterFilter.split('intake-')[1] && s.status !== 'Archived').length === 0 && (
+                                    <p className="text-xs text-muted-foreground italic">No semester phases setup for this intake period yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="rounded-md border shadow-sm overflow-hidden">
                         <Table>
