@@ -453,11 +453,16 @@ export default function AdminExamTimetablePage() {
                                                                             <p className="font-bold text-[10px] text-primary leading-tight">{exam.courseCode}: {exam.courseName}</p>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {exam.venue}</div>
                                                                         </div>
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleTogglePublish(selectedSemesterId, exam.id, !!exam.isPublished)} title={exam.isPublished ? "Hide" : "Publish"}>
-                                                                                {exam.isPublished ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <Clock className="h-3 w-3 text-orange-600"/>}
+                                                                        <div className="flex flex-col items-center gap-2">
+                                                                            <Switch 
+                                                                                checked={!!exam.isPublished} 
+                                                                                onCheckedChange={() => handleTogglePublish(selectedSemesterId, exam.id, !!exam.isPublished)}
+                                                                                title={exam.isPublished ? "Set to Draft" : "Publish"}
+                                                                                className="scale-75 data-[state=checked]:bg-emerald-500"
+                                                                            />
+                                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleDelete(selectedSemesterId, exam.id)} title="Delete Slot">
+                                                                                <Trash2 className="h-3.5 w-3.5"/>
                                                                             </Button>
-                                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(selectedSemesterId, exam.id)}><Trash2 className="h-3 w-3"/></Button>
                                                                         </div>
                                                                     </div>
                                                                     
