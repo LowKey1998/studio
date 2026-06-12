@@ -836,6 +836,15 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent className="space-y-4">
+                                                            {isCurrentStanding && !sem.isFeesSet && (
+                                                                <Alert variant="destructive" className="bg-red-50 border-red-200">
+                                                                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                                                                    <AlertTitle className="text-xs font-bold text-red-800">Fees Not Finalized</AlertTitle>
+                                                                    <AlertDescription className="text-[10px] text-red-700 leading-tight">
+                                                                        Fees for this semester have not been finalized. If not finalized, students will not see their invoices or select payment plans.
+                                                                    </AlertDescription>
+                                                                </Alert>
+                                                            )}
                                                             <div className="p-3 rounded-xl border bg-primary/5 shadow-sm space-y-3">
                                                                 <div className="flex items-center justify-between">
                                                                     <Label className="text-[10px] font-black uppercase text-primary tracking-widest leading-none">Financial Baseline</Label>

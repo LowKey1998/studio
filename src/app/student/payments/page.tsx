@@ -40,6 +40,15 @@ import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { calculateBilling } from '@/lib/billing-utils';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
+const getCoursesFromReg = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter((id: any) => typeof id === 'string');
+    if (typeof raw === 'object') {
+        return Object.keys(raw).filter(k => raw[k] === true);
+    }
+    return [];
+};
+
 type Invoice = { 
     invoiceId: string; 
     totalTuition: number; 
@@ -107,6 +116,7 @@ type PaymentSummary = {
         late: number;
         mandatoryItems?: any[];
         optionalItems?: any[];
+        courses?: any[];
     };
     scholarshipInfo?: { name: string; percentage: number };
     scholarshipStatus?: 'Pending' | 'Approved' | 'Denied';
@@ -220,24 +230,47 @@ export default function StudentPaymentsPage() {
                             ? (tuition * (scholarPerc / 100))
                             : 0;
 
+                        const invoiceCourseIds = getCoursesFromReg(invoice.courses || reg.courses);
+                        const mappedCourses = invoiceCourseIds.map((cid: string) => {
+                            const c = coursesData[cid];
+                            return {
+                                id: cid,
+                                code: c?.code || 'N/A',
+                                name: c?.name || 'Unknown Course',
+                                cost: Number(activeSemesterRules.coursePrices?.[cid] || c?.cost || 0)
+                            };
+                        });
+
                         billingResults = {
                             totalDue: tuition - scholarshipAmount + mandatory + optional + late,
                             breakdown: {
                                 tuition, mandatory, optional, scholarship: scholarshipAmount, late,
                                 mandatoryItems: Object.values(activeSemesterRules.mandatoryFees || {}),
-                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) }))
+                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
+                                courses: mappedCourses
                             }
                         };
                     } else {
                         isProvisional = true;
+                        const enrolledCourseIds = getCoursesFromReg(reg.courses);
                         const billingOutput = calculateBilling({
                             policy: activeSemesterRules.billingPolicy || institutionSettings.billingPolicy || 'course',
                             semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
-                            courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0) })),
+                            courses: enrolledCourseIds.map((cid: string) => ({ id: cid, cost: Number(activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0) })),
                             mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
                             optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
                             applyScholarship: !!reg.applyScholarship || !!scholarId,
                             scholarshipPercentage: scholarPerc
+                        });
+
+                        const mappedCourses = enrolledCourseIds.map((cid: string) => {
+                            const c = coursesData[cid];
+                            return {
+                                id: cid,
+                                code: c?.code || 'N/A',
+                                name: c?.name || 'Unknown Course',
+                                cost: Number(activeSemesterRules.coursePrices?.[cid] || c?.cost || 0)
+                            };
                         });
 
                         billingResults = {
@@ -249,7 +282,8 @@ export default function StudentPaymentsPage() {
                                 scholarship: billingOutput.scholarshipAmount,
                                 late: 0,
                                 mandatoryItems: billingOutput.mandatoryItems,
-                                optionalItems: billingOutput.optionalItems
+                                optionalItems: billingOutput.optionalItems,
+                                courses: mappedCourses
                             }
                         };
                     }
@@ -453,23 +487,68 @@ export default function StudentPaymentsPage() {
                                 <div className="grid md:grid-cols-2 gap-8">
                                     <div className="space-y-4">
                                         <h4 className="text-[10px] font-black uppercase text-primary flex items-center gap-2"><Receipt className="h-3 w-3" /> Billing Breakdown</h4>
-                                        <div className="rounded-xl border p-4 bg-card space-y-3 shadow-inner">
-                                            <div className="flex justify-between text-sm">
-                                                <span>Total Tuition</span>
-                                                <div className="text-right">
-                                                    <span className="font-bold">ZMW {payment.breakdown.tuition.toFixed(2)}</span>
+                                        <div className="rounded-xl border p-4 bg-card space-y-4 shadow-inner">
+                                            {/* Itemized Courses */}
+                                            {payment.breakdown.courses && payment.breakdown.courses.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Courses / Class Tuition</span>
+                                                    <div className="space-y-1 border rounded-lg bg-muted/20 p-2 text-xs">
+                                                        {payment.breakdown.courses.map((course: any) => (
+                                                            <div key={course.id} className="flex justify-between items-center">
+                                                                <span className="font-medium text-muted-foreground">{course.code} - {course.name}</span>
+                                                                <span className="font-semibold">ZMW {course.cost.toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                        <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
+                                                            <span>Tuition Subtotal</span>
+                                                            <span>ZMW {payment.breakdown.tuition.toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )}
+
+                                            {/* Itemized Mandatory Fees */}
+                                            {payment.breakdown.mandatoryItems && payment.breakdown.mandatoryItems.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Mandatory Semester Fees</span>
+                                                    <div className="space-y-1 border rounded-lg bg-muted/20 p-2 text-xs">
+                                                        {payment.breakdown.mandatoryItems.map((fee: any, idx: number) => (
+                                                            <div key={idx} className="flex justify-between items-center">
+                                                                <span className="font-medium text-muted-foreground">{fee.name}</span>
+                                                                <span className="font-semibold">ZMW {fee.amount.toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                        <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
+                                                            <span>Mandatory Subtotal</span>
+                                                            <span>ZMW {payment.breakdown.mandatory.toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Itemized Optional Fees */}
+                                            {payment.breakdown.optionalItems && payment.breakdown.optionalItems.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Selected Optional Fees</span>
+                                                    <div className="space-y-1 border rounded-lg bg-muted/20 p-2 text-xs">
+                                                        {payment.breakdown.optionalItems.map((fee: any, idx: number) => (
+                                                            <div key={idx} className="flex justify-between items-center">
+                                                                <span className="font-medium text-muted-foreground">{fee.name}</span>
+                                                                <span className="font-semibold">ZMW {fee.amount.toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                        <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
+                                                            <span>Optional Subtotal</span>
+                                                            <span>ZMW {payment.breakdown.optional.toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {payment.breakdown.scholarship > 0 && (
                                                 <div className="flex justify-between text-sm text-blue-600 italic">
                                                     <span>Scholarship Waiver ({payment.scholarshipInfo?.percentage}%)</span>
                                                     <span className="font-bold">- ZMW {payment.breakdown.scholarship.toFixed(2)}</span>
-                                                </div>
-                                            )}
-                                            {(payment.breakdown.mandatory + payment.breakdown.optional) > 0 && (
-                                                <div className="flex justify-between text-sm text-muted-foreground">
-                                                    <span>Mandatory & Optional Fees</span>
-                                                    <span className="font-bold">ZMW {(payment.breakdown.mandatory + payment.breakdown.optional).toFixed(2)}</span>
                                                 </div>
                                             )}
                                             {payment.breakdown.late > 0 && (
@@ -484,7 +563,7 @@ export default function StudentPaymentsPage() {
                                                 <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
-                                            <div className="flex justify-between font-black text-destructive border-t pt-2 mt-2"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>
+                                            <div className="flex justify-between font-black text-destructive border-t pt-2 mt-2 text-base"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>
                                         </div>
                                     </div>
                                     <div className="space-y-4">

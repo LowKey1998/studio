@@ -78,6 +78,7 @@ export default function DashboardLayout({
       missingDeadlines: 0,
       unassignedCourses: 0
   });
+  const [unfinalizedSems, setUnfinalizedSems] = React.useState<any[]>([]);
   
   const handleLogout = async () => {
     try {
@@ -280,6 +281,73 @@ export default function DashboardLayout({
     };
   }, [user, userProfile]);
 
+  React.useEffect(() => {
+    if (!user || !userProfile) {
+        setUnfinalizedSems([]);
+        return;
+    }
+
+    const isRegistrar = userProfile.subRoleNames?.some(name => name.toLowerCase() === 'registrar');
+    const hasAccess = userProfile.role === 'Admin' || isRegistrar;
+
+    if (!hasAccess) {
+        setUnfinalizedSems([]);
+        return;
+    }
+
+    const semsRef = ref(db, 'semesters');
+    const calRef = ref(db, 'settings/academicCalendar');
+    const intakesRef = ref(db, 'intakes');
+
+    const handleData = () => {
+        Promise.all([get(semsRef), get(calRef), get(intakesRef)]).then(([semsSnap, calSnap, intakesSnap]) => {
+            if (!semsSnap.exists() || !calSnap.exists() || !intakesSnap.exists()) {
+                setUnfinalizedSems([]);
+                return;
+            }
+
+            const sems = semsSnap.val();
+            const cal = calSnap.val();
+            const intakes = intakesSnap.val();
+
+            const unfinalizedList: any[] = [];
+
+            Object.entries(intakes as Record<string, any>).forEach(([intakeId, intake]) => {
+                const intakeStartStr = parseIntakeDate(intake.name);
+                if (!intakeStartStr) return;
+
+                const standing = calculateAcademicState(
+                    intakeStartStr,
+                    new Date(),
+                    cal.standardCycles,
+                    Object.values(cal.anomalies || {})
+                );
+
+                if (!standing) return;
+
+                Object.entries(sems as Record<string, any>).forEach(([semId, sem]) => {
+                    if (
+                        sem.intakeId === intakeId &&
+                        sem.year === standing.year &&
+                        sem.semesterInYear === standing.semester &&
+                        !sem.isFeesSet &&
+                        sem.status !== 'Archived'
+                    ) {
+                        unfinalizedList.push({ id: semId, ...sem });
+                    }
+                });
+            });
+
+            setUnfinalizedSems(unfinalizedList);
+        }).catch(err => {
+            console.error("Error checking unfinalized sems:", err);
+        });
+    };
+
+    const unsub = onValue(semsRef, handleData);
+    return () => unsub();
+  }, [user, userProfile]);
+
   const menuItems = React.useMemo(() => {
     if (!userProfile?.role) return [];
 
@@ -358,7 +426,7 @@ export default function DashboardLayout({
             {filteredItems.map((item) => {
                 if (!item || !item.items) return null;
                 const categoryTotalNotifications = item.items.reduce((sum, sub) => {
-                    const key = sub.notificationKey;
+                    const key = (sub as any).notificationKey;
                     return sum + (key ? (notificationCounts[key] || 0) : 0);
                 }, 0);
 
@@ -382,25 +450,36 @@ export default function DashboardLayout({
                                     const isWarning = subItem.notificationKey && warningKeys.has(subItem.notificationKey);
                                     
                                     return (
-                                        <SidebarMenuItem key={subItem.href}>
-                                            <Link href={subItem.href}>
-                                                <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
-                                                    {subItem.icon && <subItem.icon />}
-                                                    <span className="flex-1">{subItem.label}</span>
-                                                    {subCount > 0 && (
-                                                        <Badge 
-                                                            variant={isWarning ? "secondary" : "destructive"} 
-                                                            className={cn(
-                                                                "h-4 min-w-4 flex items-center justify-center p-0 text-[9px] font-bold rounded-full",
-                                                                isWarning && "bg-orange-500 text-white hover:bg-orange-600"
-                                                            )}
-                                                        >
-                                                            {subCount}
-                                                        </Badge>
-                                                    )}
-                                                </SidebarMenuButton>
-                                            </Link>
-                                        </SidebarMenuItem>
+                                        <React.Fragment key={subItem.href}>
+                                            {subItem.href === '/admin/registration-management' && unfinalizedSems.length > 0 && (
+                                                <div className="mx-2 my-1.5 p-2 bg-red-50 border border-red-200 rounded-md text-[10px] text-red-700 leading-tight">
+                                                    <div className="flex items-center gap-1 font-bold text-red-800 mb-0.5">
+                                                        <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 animate-pulse" />
+                                                        <span>Fees Pending Finalization</span>
+                                                    </div>
+                                                    Students won't see invoices for the current standing semester.
+                                                </div>
+                                            )}
+                                            <SidebarMenuItem>
+                                                <Link href={subItem.href}>
+                                                    <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
+                                                        {subItem.icon && <subItem.icon />}
+                                                        <span className="flex-1">{subItem.label}</span>
+                                                        {subCount > 0 && (
+                                                            <Badge 
+                                                                variant={isWarning ? "secondary" : "destructive"} 
+                                                                className={cn(
+                                                                    "h-4 min-w-4 flex items-center justify-center p-0 text-[9px] font-bold rounded-full",
+                                                                    isWarning && "bg-orange-500 text-white hover:bg-orange-600"
+                                                                )}
+                                                            >
+                                                                {subCount}
+                                                            </Badge>
+                                                        )}
+                                                    </SidebarMenuButton>
+                                                </Link>
+                                            </SidebarMenuItem>
+                                        </React.Fragment>
                                     );
                                 })}
                             </SidebarMenu>
