@@ -43,7 +43,8 @@ import {
     Building2,
     FileText,
     PieChart,
-    BarChart3
+    BarChart3,
+    Upload
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
