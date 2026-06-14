@@ -88,6 +88,8 @@ import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sendEmail } from '@/ai/flows/send-email-flow';
+import { logFinancialAudit } from '@/lib/financial-audit';
+
 
 type FeeBreakdown = {
     tuition: number;
@@ -276,6 +278,11 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
+    const [currency, setCurrency] = React.useState<'ZMW' | 'USD'>('ZMW');
+    const [exchangeRate, setExchangeRate] = React.useState<number>(25);
+    const [reconCsvInput, setReconCsvInput] = React.useState<string>("");
+    const [reconResults, setReconResults] = React.useState<any[]>([]);
+    const [auditLogsList, setAuditLogsList] = React.useState<any[]>([]);
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -413,7 +420,8 @@ export default function PaymentsManagementPage() {
         quickbooks: ref(db, 'settings/integrations/quickbooks'),
         budget: ref(db, 'budget'),
         annualBudget: ref(db, 'annualBudget'),
-        requisitions: ref(db, 'departmentalRequisitions')
+        requisitions: ref(db, 'departmentalRequisitions'),
+        financialAuditLogs: ref(db, 'financialAuditLogs')
     }), []);
 
     const computeDerived = React.useCallback((store: any) => {
@@ -602,7 +610,14 @@ export default function PaymentsManagementPage() {
         }));
         unsubs.push(onValue(dataRefs.courses, (s) => { store.courses = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(store); }));
-        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { store.financialSettings = snapshot.val(); computeDerived(store); }));
+        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => {
+            const data = snapshot.val() || {};
+            if (data.exchangeRate) {
+                setExchangeRate(Number(data.exchangeRate));
+            }
+            store.financialSettings = data;
+            computeDerived(store);
+        }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(store); }));
         unsubs.push(onValue(dataRefs.academicCalendar, (s) => { 
             const val = s.val() || {};
@@ -640,6 +655,12 @@ export default function PaymentsManagementPage() {
             const list = Object.keys(data).map(id => ({ id, ...data[id] }));
             list.sort((a: any, b: any) => (b.submittedAt || 0) - (a.submittedAt || 0));
             setLocalRequisitions(list);
+        }));
+        unsubs.push(onValue(dataRefs.financialAuditLogs, (s) => {
+            const data = s.val() || {};
+            const list = Object.keys(data).map(id => ({ id, ...data[id] }));
+            list.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
+            setAuditLogsList(list);
         }));
 
         return () => unsubs.forEach(unsub => unsub());
@@ -692,7 +713,15 @@ export default function PaymentsManagementPage() {
         if (!budgetCategory || !budgetedAmount) return;
         setBudgetSaving(true);
         try {
-            await push(ref(db, 'budget'), { category: budgetCategory, budgeted: parseFloat(budgetedAmount), actual: 0 });
+            const amount = parseFloat(budgetedAmount);
+            await push(ref(db, 'budget'), { category: budgetCategory, budgeted: amount, actual: 0 });
+            await logFinancialAudit(
+                user?.email || 'unknown',
+                userData?.name || 'Accounts Staff',
+                'Budgeting',
+                'Add Budget Category',
+                `Allocated budget limit of ${formatVal(amount)} for category '${budgetCategory}'`
+            );
             toast({ title: "Budget Item Added" });
             setBudgetCategory('');
             setBudgetedAmount('');
@@ -706,7 +735,17 @@ export default function PaymentsManagementPage() {
 
     const handleDeleteBudget = async (id: string) => {
         if (!window.confirm("Are you sure?")) return;
+        const item = localBudget.find(b => b.id === id);
         await remove(ref(db, `budget/${id}`));
+        if (item) {
+            await logFinancialAudit(
+                user?.email || 'unknown',
+                userData?.name || 'Accounts Staff',
+                'Budgeting',
+                'Remove Budget Category',
+                `Removed budget category '${item.category}' with limit ${formatVal(item.budgeted)}`
+            );
+        }
         toast({ title: 'Budget item removed' });
     };
 
@@ -714,7 +753,15 @@ export default function PaymentsManagementPage() {
         if (!annualDept || !annualAmount) return;
         setAnnualSaving(true);
         try {
-            await push(ref(db, 'annualBudget'), { department: annualDept, budgeted: parseFloat(annualAmount), actual: 0 });
+            const amount = parseFloat(annualAmount);
+            await push(ref(db, 'annualBudget'), { department: annualDept, budgeted: amount, actual: 0 });
+            await logFinancialAudit(
+                user?.email || 'unknown',
+                userData?.name || 'Accounts Staff',
+                'Budgeting',
+                'Add Annual Allocation',
+                `Allocated annual budget limit of ${formatVal(amount)} for department '${annualDept}'`
+            );
             toast({ title: "Annual Allocation Added" });
             setAnnualDept('');
             setAnnualAmount('');
@@ -728,7 +775,17 @@ export default function PaymentsManagementPage() {
 
     const handleDeleteAnnual = async (id: string) => {
         if (!window.confirm("Are you sure?")) return;
+        const item = localAnnualBudget.find(b => b.id === id);
         await remove(ref(db, `annualBudget/${id}`));
+        if (item) {
+            await logFinancialAudit(
+                user?.email || 'unknown',
+                userData?.name || 'Accounts Staff',
+                'Budgeting',
+                'Remove Annual Allocation',
+                `Removed annual budget for department '${item.department}' with limit ${formatVal(item.budgeted)}`
+            );
+        }
         toast({ title: 'Annual allocation removed' });
     };
 
@@ -736,14 +793,22 @@ export default function PaymentsManagementPage() {
         if (!reqDept || !reqDesc || !reqAmt) return;
         setReqSaving(true);
         try {
+            const amount = parseFloat(reqAmt);
             await push(ref(db, 'departmentalRequisitions'), {
                 department: reqDept,
                 description: reqDesc,
-                amount: parseFloat(reqAmt),
+                amount,
                 status: 'pending',
                 submittedAt: Date.now(),
                 requestedBy: userData?.name || 'Accounts Staff'
             });
+            await logFinancialAudit(
+                user?.email || 'unknown',
+                userData?.name || 'Accounts Staff',
+                'Requisitions',
+                'Submit Requisition',
+                `Submitted requisition of ${formatVal(amount)} for department '${reqDept}'. Desc: ${reqDesc}`
+            );
             toast({ title: "Requisition Submitted Successfully" });
             setReqDept('');
             setReqDesc('');
@@ -758,7 +823,17 @@ export default function PaymentsManagementPage() {
 
     const handleApproveRequisition = async (id: string) => {
         try {
+            const req = localRequisitions.find(r => r.id === id);
             await update(ref(db, `departmentalRequisitions/${id}`), { status: 'approved' });
+            if (req) {
+                await logFinancialAudit(
+                    user?.email || 'unknown',
+                    userData?.name || 'Accounts Staff',
+                    'Requisitions',
+                    'Approve Requisition',
+                    `Approved requisition of ${formatVal(req.amount)} for department '${req.department}'. Desc: ${req.description}`
+                );
+            }
             toast({ title: "Requisition Approved" });
         } catch (e) {
             toast({ variant: 'destructive', title: "Action failed" });
@@ -767,10 +842,152 @@ export default function PaymentsManagementPage() {
 
     const handleRejectRequisition = async (id: string) => {
         try {
+            const req = localRequisitions.find(r => r.id === id);
             await update(ref(db, `departmentalRequisitions/${id}`), { status: 'rejected' });
+            if (req) {
+                await logFinancialAudit(
+                    user?.email || 'unknown',
+                    userData?.name || 'Accounts Staff',
+                    'Requisitions',
+                    'Reject Requisition',
+                    `Rejected requisition of ${formatVal(req.amount)} for department '${req.department}'. Desc: ${req.description}`
+                );
+            }
             toast({ title: "Requisition Rejected" });
         } catch (e) {
             toast({ variant: 'destructive', title: "Action failed" });
+        }
+    };
+
+    const handleProcessReconciliation = () => {
+        if (!reconCsvInput.trim()) {
+            toast({ variant: 'destructive', title: "Empty Statement", description: "Please enter CSV records to reconcile." });
+            return;
+        }
+
+        const lines = reconCsvInput.split('\n');
+        const results: any[] = [];
+
+        lines.forEach((line, index) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            
+            if (trimmed.toLowerCase().includes('date,') || trimmed.toLowerCase().includes('reference,')) {
+                return;
+            }
+
+            const parts = trimmed.split(',');
+            if (parts.length < 4) {
+                results.push({
+                    lineNum: index + 1,
+                    raw: trimmed,
+                    status: 'error',
+                    message: 'Invalid columns (expected: Date,Reference,Amount,StudentID)'
+                });
+                return;
+            }
+
+            const [dateStr, reference, amountStr, studentId] = parts.map(p => p.trim());
+            const amount = parseFloat(amountStr);
+            if (isNaN(amount) || amount <= 0) {
+                results.push({
+                    lineNum: index + 1,
+                    raw: trimmed,
+                    status: 'error',
+                    message: `Invalid amount: ${amountStr}`
+                });
+                return;
+            }
+
+            const studentMatches = paymentInfos.filter(p => p.studentId === studentId);
+            if (studentMatches.length === 0) {
+                results.push({
+                    lineNum: index + 1,
+                    date: dateStr,
+                    reference,
+                    amount,
+                    studentId,
+                    status: 'unmatched',
+                    message: `Student ID '${studentId}' not found in registered rosters.`
+                });
+            } else {
+                const match = studentMatches.find(m => m.balance > 0.01) || studentMatches[0];
+                const difference = match.balance - amount;
+                
+                results.push({
+                    lineNum: index + 1,
+                    date: dateStr,
+                    reference,
+                    amount,
+                    studentId,
+                    studentName: match.studentName,
+                    userId: match.userId,
+                    semesterId: match.semesterId,
+                    invoiceId: match.invoiceId,
+                    balance: match.balance,
+                    difference,
+                    status: 'matched',
+                    message: difference === 0 
+                        ? 'Exact match' 
+                        : (difference > 0 ? `Partial payment (outstanding balance: ${formatVal(difference)})` : `Overpayment of ${formatVal(Math.abs(difference))}`)
+                });
+            }
+        });
+
+        setReconResults(results);
+        toast({ title: "Reconciliation Processed", description: `Parsed ${results.length} records successfully.` });
+    };
+
+    const handleApplyReconciledDeposits = async () => {
+        if (reconResults.length === 0) return;
+        
+        const matched = reconResults.filter(r => r.status === 'matched');
+        if (matched.length === 0) {
+            toast({ variant: 'destructive', title: "No matched deposits", description: "There are no matched student deposits to record." });
+            return;
+        }
+
+        setActionLoading('reconcile-bulk');
+        try {
+            const updates: Record<string, any> = {};
+            const now = getCurrentServerDate().toISOString();
+            let count = 0;
+
+            for (const row of matched) {
+                const txRef = push(ref(db, 'transactions'));
+                updates[`transactions/${txRef.key}`] = { 
+                    transactionId: row.reference, 
+                    userId: row.userId, 
+                    semesterId: row.semesterId || null,
+                    invoiceId: row.invoiceId || null, 
+                    amount: row.amount, 
+                    paymentDate: row.date || now, 
+                    status: 'successful', 
+                    method: 'Bank Transfer', 
+                    recordedBy: userData?.name || 'Reconciliation Auto-matching' 
+                };
+
+                createNotification(row.userId, `Bank Transfer deposit of ${formatVal(row.amount)} recorded for ref ${row.reference}.`, '/student/payments').catch(() => {});
+                
+                await logFinancialAudit(
+                    user?.email || 'unknown',
+                    userData?.name || 'Reconciliation',
+                    'Transactions',
+                    'Bank Deposit Reconciliation',
+                    `Recorded bank transfer of ${formatVal(row.amount)} for ${row.studentName} (${row.studentId}). Ref: ${row.reference}`
+                );
+
+                count++;
+            }
+
+            await update(ref(db), updates);
+            toast({ title: "Deposits Recorded", description: `Successfully approved and recorded ${count} bank transfer payments.` });
+            setReconResults([]);
+            setReconCsvInput("");
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -794,7 +1011,8 @@ export default function PaymentsManagementPage() {
             doc.setFontSize(20);
             const reportTitle = financeReportType === 'income' ? 'Income Statement' 
                 : (financeReportType === 'cashflow' ? 'Cash Flow Report' 
-                : (financeReportType === 'scholarships' ? 'Scholarship Recipients Report' : 'Revenue Summary'));
+                : (financeReportType === 'scholarships' ? 'Scholarship Recipients Report' 
+                : (financeReportType === 'aging' ? 'Aging Receivables Report' : 'Revenue Summary')));
             
             doc.text(reportTitle, 14, 22);
             doc.setFontSize(10);
@@ -854,6 +1072,45 @@ export default function PaymentsManagementPage() {
                     theme: 'grid',
                     headStyles: { fillColor: [39, 174, 96] }
                 });
+            } else if (financeReportType === 'aging') {
+                const now = new Date();
+                const rows = paymentInfos
+                    .filter(p => p.balance > 0.01)
+                    .map(p => {
+                        const reg = allUsers[p.userId]?.registrations?.[p.semesterId!];
+                        const invoice = allUsers[p.userId]?.invoices?.[p.invoiceId];
+                        const dateStr = invoice?.dateCreated || reg?.registrationDate || new Date().toISOString();
+                        let days = 0;
+                        try {
+                            const diffTime = now.getTime() - new Date(dateStr).getTime();
+                            days = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+                        } catch (e) {}
+
+                        let bracket = '0-30 days';
+                        if (days > 30 && days <= 60) bracket = '31-60 days';
+                        else if (days > 60 && days <= 90) bracket = '61-90 days';
+                        else if (days > 90) bracket = '90+ days';
+
+                        const amt = currency === 'USD' ? p.balance / exchangeRate : p.balance;
+                        const symbol = currency === 'USD' ? "USD" : "ZMW";
+
+                        return [
+                            p.studentId,
+                            p.studentName,
+                            p.semesterName || 'Unknown',
+                            `${days} days`,
+                            bracket,
+                            `${symbol} ${amt.toFixed(2)}`
+                        ];
+                    });
+
+                autoTable(doc, {
+                    startY: 40,
+                    head: [['Student ID', 'Name', 'Period', 'Age in Days', 'Aging Bracket', 'Outstanding Balance']],
+                    body: rows,
+                    theme: 'striped',
+                    headStyles: { fillColor: [192, 57, 43] }
+                });
             }
 
             doc.save(`${financeReportType}_report_${Date.now()}.pdf`);
@@ -898,13 +1155,71 @@ export default function PaymentsManagementPage() {
         };
     }, [rawTransactions, expensesList, paymentInfos]);
 
-    const formatZmw = (val: number) => {
+    const formatVal = React.useCallback((val: number) => {
+        const amt = currency === 'USD' ? val / exchangeRate : val;
+        const symbol = currency === 'USD' ? "$" : "ZMW";
+        return `${symbol} ${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }, [currency, exchangeRate]);
+
+    const formatZmw = React.useCallback((val: number) => {
         const sign = val < 0 ? "-" : "";
         const absVal = Math.abs(val);
-        if (absVal >= 1000000) return `${sign}ZMW ${(absVal / 1000000).toFixed(1)}M`;
-        if (absVal >= 1000) return `${sign}ZMW ${(absVal / 1000).toFixed(1)}K`;
-        return `${sign}ZMW ${absVal.toFixed(0)}`;
-    };
+        const converted = currency === 'USD' ? absVal / exchangeRate : absVal;
+        const symbol = currency === 'USD' ? "$" : "ZMW";
+        if (converted >= 1000000) return `${sign}${symbol} ${(converted / 1000000).toFixed(1)}M`;
+        if (converted >= 1000) return `${sign}${symbol} ${(converted / 1000).toFixed(1)}K`;
+        return `${sign}${symbol} ${converted.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    }, [currency, exchangeRate]);
+
+    const agingStats = React.useMemo(() => {
+        let bracket1 = 0; // 0-30 days
+        let bracket2 = 0; // 31-60 days
+        let bracket3 = 0; // 61-90 days
+        let bracket4 = 0; // 90+ days
+        
+        let count1 = 0;
+        let count2 = 0;
+        let count3 = 0;
+        let count4 = 0;
+
+        const now = getCurrentServerDate();
+
+        paymentInfos.forEach(p => {
+            if (p.balance <= 0.01) return;
+
+            const reg = allUsers[p.userId]?.registrations?.[p.semesterId!];
+            const invoice = allUsers[p.userId]?.invoices?.[p.invoiceId];
+            const dateStr = invoice?.dateCreated || reg?.registrationDate || new Date().toISOString();
+            
+            let days = 0;
+            try {
+                const diffTime = now.getTime() - new Date(dateStr).getTime();
+                days = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+            } catch (e) {}
+
+            if (days <= 30) {
+                bracket1 += p.balance;
+                count1++;
+            } else if (days <= 60) {
+                bracket2 += p.balance;
+                count2++;
+            } else if (days <= 90) {
+                bracket3 += p.balance;
+                count3++;
+            } else {
+                bracket4 += p.balance;
+                count4++;
+            }
+        });
+
+        const totalAging = bracket1 + bracket2 + bracket3 + bracket4;
+
+        return {
+            bracket1, bracket2, bracket3, bracket4,
+            count1, count2, count3, count4,
+            totalAging
+        };
+    }, [paymentInfos, allUsers, getCurrentServerDate]);
 
     const monthlyStats = React.useMemo(() => {
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -1050,6 +1365,8 @@ export default function PaymentsManagementPage() {
         { id: "Overview", label: "Overview", icon: BarChart3 },
         { id: "Fee Collection", label: "Fee Collection", icon: CreditCard },
         { id: "Transactions", label: "Transactions", icon: Receipt },
+        { id: "Bank Reconciliation", label: "Bank Reconciliation", icon: FileCheck },
+        { id: "Audit Logs", label: "Audit Logs", icon: History },
         { id: "Budget", label: "Budget", icon: PieChart },
         { id: "Annual Budget", label: "Annual Budget", icon: Upload },
         { id: "Forecasting", label: "Forecasting", icon: TrendingUp },
@@ -1422,13 +1739,23 @@ export default function PaymentsManagementPage() {
                     const reqRef = push(ref(db, 'studentCreationRequests'));
                     const txRef = push(ref(db, 'transactions'));
                     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+                    const txId = `DEP-${Date.now()}-${randomSuffix}`;
                     updates[`studentCreationRequests/${reqRef.key}`] = { tempId: row.tempStudentId || null, tempName: row.tempStudentName || null, targetSemesterId: row.semesterId || null, amountPaid: amount, status: 'pending', timestamp: Date.now() };
-                    updates[`transactions/${txRef.key}`] = { transactionId: `DEP-${Date.now()}-${randomSuffix}`, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash', recordedBy: userData.name, requestId: reqRef.key, senderName: row.tempStudentName || null };
+                    updates[`transactions/${txRef.key}`] = { transactionId: txId, userId: 'unlinked', amount, paymentDate: now, status: 'successful', method: 'Cash', recordedBy: userData.name, requestId: reqRef.key, senderName: row.tempStudentName || null };
+                    
+                    await logFinancialAudit(
+                        user?.email || 'unknown',
+                        userData?.name || 'Accounts Staff',
+                        'Transactions',
+                        'Record Bulk Payment (New Student)',
+                        `Recorded cash deposit of ${formatVal(amount)} for prospective student ${row.tempStudentName || 'Unknown'} (Proposed ID: ${row.tempStudentId || 'N/A'}). Transaction ID: ${txId}`
+                    );
                 } else if (row.userId) {
                     const txRef = push(ref(db, 'transactions'));
                     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+                    const txId = `CASH-${Date.now()}-${randomSuffix}`;
                     updates[`transactions/${txRef.key}`] = { 
-                        transactionId: `CASH-${Date.now()}-${randomSuffix}`, 
+                        transactionId: txId, 
                         userId: row.userId, 
                         semesterId: row.semesterId,
                         invoiceId: row.invoiceId || null, 
@@ -1439,6 +1766,15 @@ export default function PaymentsManagementPage() {
                         recordedBy: userData.name 
                     };
                     createNotification(row.userId, `Payment of ZMW ${amount.toFixed(2)} recorded for ${row.academicStanding}.`, '/student/payments').catch(() => {});
+                    
+                    const studentProfile = allUsers[row.userId];
+                    await logFinancialAudit(
+                        user?.email || 'unknown',
+                        userData?.name || 'Accounts Staff',
+                        'Transactions',
+                        'Record Bulk Payment',
+                        `Recorded cash payment of ${formatVal(amount)} for student ${studentProfile?.name || 'Unknown'} (${studentProfile?.id || row.userId}) targeting period ${row.academicStanding}. Transaction ID: ${txId}`
+                    );
                 }
             }
 
@@ -1471,6 +1807,13 @@ export default function PaymentsManagementPage() {
                 timestamp: Date.now(),
                 status: 'pending'
             });
+            await logFinancialAudit(
+                user?.email || 'unknown',
+                userData?.name || 'Accounts Staff',
+                'Adjustments',
+                'Propose Adjustment',
+                `Proposed financial adjustment (${adjustType}) for student ${student.name} (${student.id}). Target ID: ${adjustTargetId}. Old Value: ${formatVal(adjustOldValue)}, New Value: ${formatVal(parseFloat(adjustNewValue))}. Reason: ${adjustReason}`
+            );
             toast({ title: 'Adjustment Proposed', description: 'Pending Audit Review.' });
             setIsAdjustmentDialogOpen(false);
             setAdjustStudentId(''); setAdjustTargetId(''); setAdjustReason(''); setAdjustNewValue('');
@@ -1566,6 +1909,50 @@ export default function PaymentsManagementPage() {
                             <p className="text-sm text-gray-500 mt-0.5">Manage fees, expenses, budgets, and financial reporting</p>
                         </div>
                         <div className="inline-flex items-center gap-2 print:hidden">
+                            {/* Multi-Currency Controls */}
+                            <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-white shadow-sm mr-2">
+                                <button
+                                    onClick={() => setCurrency('ZMW')}
+                                    className={cn(
+                                        "px-2 py-0.5 text-[9px] font-black rounded transition-all",
+                                        currency === 'ZMW' 
+                                            ? "bg-primary text-white" 
+                                            : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                                    )}
+                                >
+                                    ZMW
+                                </button>
+                                <button
+                                    onClick={() => setCurrency('USD')}
+                                    className={cn(
+                                        "px-2 py-0.5 text-[9px] font-black rounded transition-all",
+                                        currency === 'USD' 
+                                            ? "bg-primary text-white" 
+                                            : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                                    )}
+                                >
+                                    USD
+                                </button>
+                                {currency === 'USD' && (
+                                    <div className="flex items-center gap-1 pl-1 border-l border-gray-200">
+                                        <span className="text-[8px] text-gray-400 font-bold uppercase">Rate:</span>
+                                        <input
+                                            type="number"
+                                            value={exchangeRate}
+                                            onChange={async (e) => {
+                                                const rate = parseFloat(e.target.value) || 1;
+                                                setExchangeRate(rate);
+                                                try {
+                                                    await update(ref(db, 'settings/financialSettings'), { exchangeRate: rate });
+                                                } catch (err) {
+                                                    console.error("Failed to update exchange rate in db:", err);
+                                                }
+                                            }}
+                                            className="w-10 h-5 border rounded px-0.5 text-[9px] font-bold text-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                                        />
+                                    </div>
+                                )}
+                            </div>
                             <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
                                 <Wifi className="h-2.5 w-2.5 text-green-600 animate-pulse" />
                                 Online
@@ -1747,6 +2134,42 @@ export default function PaymentsManagementPage() {
                                 </div>
                             </div>
 
+                            {/* Aging Receivables Card */}
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-gray-900">Aging Receivables (Outstanding Arrears)</h3>
+                                        <p className="text-[11px] text-gray-500">Breakdown of unpaid student balances by duration since invoice/registration date</p>
+                                    </div>
+                                    <span className="text-xs font-black text-destructive">{formatVal(agingStats.totalAging)} Total</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    {[
+                                        { label: "0 - 30 Days", value: agingStats.bracket1, count: agingStats.count1, color: "bg-blue-500", text: "text-blue-700" },
+                                        { label: "31 - 60 Days", value: agingStats.bracket2, count: agingStats.count2, color: "bg-yellow-500", text: "text-yellow-700" },
+                                        { label: "61 - 90 Days", value: agingStats.bracket3, count: agingStats.count3, color: "bg-orange-500", text: "text-orange-700" },
+                                        { label: "90+ Days (Critical)", value: agingStats.bracket4, count: agingStats.count4, color: "bg-red-500", text: "text-red-700" }
+                                    ].map((bracket, idx) => {
+                                        const percentage = agingStats.totalAging > 0 ? (bracket.value / agingStats.totalAging) * 100 : 0;
+                                        return (
+                                            <div key={idx} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-3 shadow-inner">
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase text-gray-500">{bracket.label}</span>
+                                                    <p className="text-base font-black text-gray-900 mt-1">{formatVal(bracket.value)}</p>
+                                                    <span className="text-[10px] text-gray-500 font-medium">{bracket.count} student(s)</span>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                                        <div className={cn(bracket.color, "h-full rounded-full transition-all duration-500")} style={{ width: `${percentage}%` }}></div>
+                                                    </div>
+                                                    <span className="text-[9px] font-bold text-gray-500">{percentage.toFixed(1)}% of arrears</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
                             <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-sm font-bold text-gray-900">Recent Transactions</h3>
@@ -1767,7 +2190,7 @@ export default function PaymentsManagementPage() {
                                                 <p className="text-[10px] text-gray-500">{tx.subtitle}</p>
                                             </div>
                                             <span className={cn("text-xs font-bold", tx.type === 'expense' ? "text-red-600" : "text-green-600")}>
-                                                {tx.type === 'expense' ? "-" : "+"}ZMW {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {tx.type === 'expense' ? "-" : "+"}{formatVal(tx.amount)}
                                             </span>
                                         </div>
                                     ))}
@@ -1807,7 +2230,7 @@ export default function PaymentsManagementPage() {
                                                         <TableCell className="text-xs font-bold">{studentName}</TableCell>
                                                         <TableCell className="text-xs"><Badge variant="outline">{tx.method || 'Online'}</Badge></TableCell>
                                                         <TableCell className="text-xs">{tx.purpose || 'Registration Fees'}</TableCell>
-                                                        <TableCell className="text-right text-green-600 font-bold text-xs whitespace-nowrap">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                        <TableCell className="text-right text-green-600 font-bold text-xs whitespace-nowrap">{formatVal(tx.amount)}</TableCell>
                                                         <TableCell className="text-right">
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
                                                                 const sInfo = paymentInfos.find(p => p.userId === tx.userId && p.semesterId === tx.semesterId) || {
@@ -1994,8 +2417,8 @@ export default function PaymentsManagementPage() {
                                                                 </div>
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
-                                                        <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
+                                                        <TableCell className="text-right font-black text-sm text-destructive">{formatVal(info.balance)}</TableCell>
+                                                        <TableCell className="text-right text-green-600 font-bold text-xs">{formatVal(info.totalPaid)}</TableCell>
                                                         <TableCell className="text-center">
                                                             <div className="flex flex-col items-center cursor-pointer" onClick={() => { setSelectedDetail(info); setIsDetailOpen(true); }}>
                                                                 {info.balance <= 0.01 ? <Badge className="bg-green-600 text-[8px] font-black border-0 text-white">Cleared</Badge> : info.thresholdMet ? <Badge variant="secondary" className="bg-primary/10 text-primary text-[8px] font-black">Good Standing</Badge> : <Badge variant="destructive" className="text-[8px] font-black animate-pulse">Below Threshold</Badge>}
@@ -2030,7 +2453,194 @@ export default function PaymentsManagementPage() {
                         </>
                     )}
 
-                    {currentTab !== "Overview" && currentTab !== "Invoices" && currentTab !== "Fee Collection" && currentTab !== "Transactions" && (
+                    {currentTab === "Bank Reconciliation" && (
+                        <div className="space-y-6">
+                            <Card className="shadow-md">
+                                <CardHeader>
+                                    <CardTitle className="text-lg">Bank Statement Reconciliation Tool</CardTitle>
+                                    <CardDescription>
+                                        Upload or paste your CSV bank statement below to automatically match deposit records with outstanding student invoice balances.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <Alert className="bg-blue-50 border-blue-200">
+                                        <Info className="h-4 w-4 text-blue-600" />
+                                        <AlertTitle className="text-xs font-bold text-blue-800">CSV Import Format</AlertTitle>
+                                        <AlertDescription className="text-[11px] text-blue-700 leading-relaxed">
+                                            The imported content must be in comma-separated format. Each line should contain: 
+                                            <code className="bg-blue-100 px-1 py-0.5 rounded mx-1 font-mono">Date,Reference,Amount,StudentID</code>. 
+                                            Example: <code className="bg-blue-100 px-1 py-0.5 rounded font-mono">2026-06-10,DEP-98127,15000.00,S2026001</code>
+                                        </AlertDescription>
+                                    </Alert>
+                                    
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold text-gray-700">Paste Bank Statement CSV</Label>
+                                        <Textarea
+                                            value={reconCsvInput}
+                                            onChange={(e) => setReconCsvInput(e.target.value)}
+                                            placeholder="2026-06-10,DEP-98127,15000.00,S2026001&#10;2026-06-11,DEP-98128,12500.00,S2026002"
+                                            rows={6}
+                                            className="font-mono text-xs focus-visible:ring-primary"
+                                        />
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <Button size="sm" onClick={handleProcessReconciliation}>
+                                            Process CSV
+                                        </Button>
+                                        <Button size="sm" variant="outline" onClick={() => { setReconCsvInput(""); setReconResults([]); }}>
+                                            Clear
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {reconResults.length > 0 && (
+                                <Card className="shadow-md">
+                                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                        <div>
+                                            <CardTitle className="text-lg">Matched Reconciliation Results</CardTitle>
+                                            <CardDescription>
+                                                Confirm matched payments before bulk recording them into the transactions ledger.
+                                            </CardDescription>
+                                        </div>
+                                        <Button 
+                                            size="sm" 
+                                            className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                                            onClick={handleApplyReconciledDeposits}
+                                            disabled={actionLoading === 'reconcile-bulk' || reconResults.filter(r => r.status === 'matched').length === 0}
+                                        >
+                                            {actionLoading === 'reconcile-bulk' && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                            Apply Matched Deposits ({reconResults.filter(r => r.status === 'matched').length})
+                                        </Button>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="rounded-md border overflow-hidden bg-white">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="bg-muted/30">
+                                                        <TableHead>Line</TableHead>
+                                                        <TableHead>Student</TableHead>
+                                                        <TableHead>Reference</TableHead>
+                                                        <TableHead>Date</TableHead>
+                                                        <TableHead className="text-right">Deposit</TableHead>
+                                                        <TableHead className="text-right">Owed Balance</TableHead>
+                                                        <TableHead className="text-right">Difference</TableHead>
+                                                        <TableHead>Status</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {reconResults.map((res, i) => (
+                                                        <TableRow 
+                                                            key={i} 
+                                                            className={cn(
+                                                                "hover:bg-muted/10 border-l-4",
+                                                                res.status === 'matched' ? "border-l-green-500" : (res.status === 'unmatched' ? "border-l-yellow-500" : "border-l-red-500")
+                                                            )}
+                                                        >
+                                                            <TableCell className="text-xs font-mono">{res.lineNum}</TableCell>
+                                                            <TableCell className="text-xs">
+                                                                {res.status === 'matched' ? (
+                                                                    <div>
+                                                                        <div className="font-bold">{res.studentName}</div>
+                                                                        <div className="text-[10px] text-gray-500">ID: {res.studentId}</div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-gray-400 italic">Unresolved Student ({res.studentId})</span>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell className="text-xs font-mono">{res.reference || '-'}</TableCell>
+                                                            <TableCell className="text-xs whitespace-nowrap">{res.date || '-'}</TableCell>
+                                                            <TableCell className="text-right text-xs font-bold text-green-600">
+                                                                {res.amount ? formatVal(res.amount) : '-'}
+                                                            </TableCell>
+                                                            <TableCell className="text-right text-xs text-gray-700">
+                                                                {res.balance !== undefined ? formatVal(res.balance) : '-'}
+                                                            </TableCell>
+                                                            <TableCell className="text-right text-xs font-semibold">
+                                                                {res.difference !== undefined ? (
+                                                                    res.difference === 0 ? (
+                                                                        <span className="text-green-600">0.00</span>
+                                                                    ) : res.difference > 0 ? (
+                                                                        <span className="text-amber-600">+{formatVal(res.difference)}</span>
+                                                                    ) : (
+                                                                        <span className="text-red-600">-{formatVal(Math.abs(res.difference))}</span>
+                                                                    )
+                                                                ) : '-'}
+                                                            </TableCell>
+                                                            <TableCell className="text-xs">
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <Badge 
+                                                                        variant="outline" 
+                                                                        className={cn(
+                                                                            "text-[9px] uppercase font-bold w-fit",
+                                                                            res.status === 'matched' 
+                                                                                ? "bg-green-50 text-green-700 border-green-200" 
+                                                                                : (res.status === 'unmatched' ? "bg-yellow-50 text-yellow-700 border-yellow-200" : "bg-red-50 text-red-700 border-red-200")
+                                                                        )}
+                                                                    >
+                                                                        {res.status}
+                                                                    </Badge>
+                                                                    <span className="text-[9px] text-gray-500 leading-normal">{res.message}</span>
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </div>
+                    )}
+
+                    {currentTab === "Audit Logs" && (
+                        <Card className="shadow-sm">
+                            <CardHeader>
+                                <CardTitle className="text-lg">Financial Audit Trail</CardTitle>
+                                <CardDescription>Comprehensive, chronological history of all administrative financial operations.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="rounded-md border overflow-hidden bg-white">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="bg-muted/30">
+                                                <TableHead>Timestamp</TableHead>
+                                                <TableHead>Operator</TableHead>
+                                                <TableHead>Category</TableHead>
+                                                <TableHead>Action</TableHead>
+                                                <TableHead>Details</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {auditLogsList.map((log) => (
+                                                <TableRow key={log.id} className="hover:bg-muted/10">
+                                                    <TableCell className="text-xs whitespace-nowrap">{format(new Date(log.timestamp), 'dd MMM yyyy HH:mm:ss')}</TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <div className="font-bold">{log.operatorName}</div>
+                                                        <div className="text-[10px] text-gray-500">{log.operatorEmail}</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <Badge variant="outline">{log.category}</Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-semibold text-gray-800">{log.action}</TableCell>
+                                                    <TableCell className="text-xs text-gray-600 max-w-md break-words">{log.details}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                            {auditLogsList.length === 0 && (
+                                                <TableRow>
+                                                    <TableCell colSpan={5} className="h-24 text-center text-xs text-muted-foreground italic">No audit log records found.</TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {currentTab !== "Overview" && currentTab !== "Invoices" && currentTab !== "Fee Collection" && currentTab !== "Transactions" && currentTab !== "Bank Reconciliation" && currentTab !== "Audit Logs" && (
                         isQuickBooksEnabled ? (
                             <div className="bg-white rounded-xl border border-gray-100 p-8 text-center shadow-sm">
                                 <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
@@ -2225,17 +2835,17 @@ export default function PaymentsManagementPage() {
                                                 </Card>
                                                 <Card className="bg-purple-50/40 border-purple-100 p-4">
                                                     <p className="text-[10px] uppercase font-bold text-gray-500">Expected Gross Tuition</p>
-                                                    <p className="text-2xl font-extrabold text-purple-900 mt-1">{paymentInfos.reduce((sum, p) => sum + p.totalDue, 0).toLocaleString()} ZMW</p>
+                                                    <p className="text-2xl font-extrabold text-purple-900 mt-1">{formatVal(paymentInfos.reduce((sum, p) => sum + p.totalDue, 0))}</p>
                                                     <p className="text-[10px] text-muted-foreground mt-1">Tuition & fees post-waivers</p>
                                                 </Card>
                                                 <Card className="bg-green-50/40 border-green-100 p-4">
                                                     <p className="text-[10px] uppercase font-bold text-gray-500">Total Collected</p>
-                                                    <p className="text-2xl font-extrabold text-green-900 mt-1">{paymentInfos.reduce((sum, p) => sum + p.totalPaid, 0).toLocaleString()} ZMW</p>
+                                                    <p className="text-2xl font-extrabold text-green-900 mt-1">{formatVal(paymentInfos.reduce((sum, p) => sum + p.totalPaid, 0))}</p>
                                                     <p className="text-[10px] text-muted-foreground mt-1">Successful payments received</p>
                                                 </Card>
                                                 <Card className="bg-red-50/40 border-red-100 p-4">
                                                     <p className="text-[10px] uppercase font-bold text-gray-500">Outstandings Shortfall</p>
-                                                    <p className="text-2xl font-extrabold text-red-900 mt-1">{paymentInfos.reduce((sum, p) => sum + p.balance, 0).toLocaleString()} ZMW</p>
+                                                    <p className="text-2xl font-extrabold text-red-900 mt-1">{formatVal(paymentInfos.reduce((sum, p) => sum + p.balance, 0))}</p>
                                                     <p className="text-[10px] text-muted-foreground mt-1">Collection target remaining</p>
                                                 </Card>
                                             </div>
@@ -2281,7 +2891,7 @@ export default function PaymentsManagementPage() {
                                                         <div className="p-4 border rounded bg-white flex justify-between items-center">
                                                             <span className="text-xs text-muted-foreground">Estimated Income:</span>
                                                             <span className="text-lg font-black text-green-700">
-                                                                {(Math.round(paymentInfos.length * (1 + forecastGrowthRate / 100)) * (forecastTuitionFee + forecastFeePerStudent)).toLocaleString()} ZMW
+                                                                {formatVal(Math.round(paymentInfos.length * (1 + forecastGrowthRate / 100)) * (forecastTuitionFee + forecastFeePerStudent))}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -2570,9 +3180,9 @@ export default function PaymentsManagementPage() {
                     <div className="flex-1 overflow-y-auto pr-4 py-6 space-y-8">
                         <section className="space-y-4">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="p-3 rounded-lg border bg-muted/20 flex flex-col items-center gap-1"><span className="text-[9px] font-bold opacity-60 uppercase">TOTAL DUE</span><span className="font-black">ZMW {selectedDetail?.totalDue.toFixed(2)}</span></div>
-                                <div className="p-3 rounded-lg border bg-green-50/50 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-green-700 opacity-60 uppercase">TOTAL PAID</span><span className="font-black text-green-700">ZMW {selectedDetail?.totalPaid.toFixed(2)}</span></div>
-                                <div className="p-3 rounded-lg border bg-red-50/50 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-red-700 opacity-60 uppercase">BALANCE</span><span className="font-black text-red-700">ZMW {selectedDetail?.balance.toFixed(2)}</span></div>
+                                <div className="p-3 rounded-lg border bg-muted/20 flex flex-col items-center gap-1"><span className="text-[9px] font-bold opacity-60 uppercase">TOTAL DUE</span><span className="font-black">{selectedDetail ? formatVal(selectedDetail.totalDue) : ''}</span></div>
+                                <div className="p-3 rounded-lg border bg-green-50/50 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-green-700 opacity-60 uppercase">TOTAL PAID</span><span className="font-black text-green-700">{selectedDetail ? formatVal(selectedDetail.totalPaid) : ''}</span></div>
+                                <div className="p-3 rounded-lg border bg-red-50/50 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-red-700 opacity-60 uppercase">BALANCE</span><span className="font-black text-red-700">{selectedDetail ? formatVal(selectedDetail.balance) : ''}</span></div>
                                 <div className="p-3 rounded-lg border bg-primary/5 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-primary opacity-60 uppercase">THRESHOLD</span><span className="font-black text-primary">{selectedDetail?.targetThreshold}%</span></div>
                             </div>
                         </section>
@@ -2582,13 +3192,13 @@ export default function PaymentsManagementPage() {
                             <div className="border rounded-xl overflow-hidden shadow-sm bg-card">
                                 <Table>
                                     <TableBody>
-                                        <TableRow><TableCell className="text-xs font-medium">Base Tuition Fees</TableCell><TableCell className="text-right font-mono text-xs">{selectedDetail?.breakdown.tuition.toFixed(2)}</TableCell></TableRow>
+                                        <TableRow><TableCell className="text-xs font-medium">Base Tuition Fees</TableCell><TableCell className="text-right font-mono text-xs">{selectedDetail ? formatVal(selectedDetail.breakdown.tuition) : ''}</TableCell></TableRow>
                                         {selectedDetail?.breakdown.scholarship && selectedDetail.breakdown.scholarship > 0 ? (
-                                            <TableRow className="text-blue-600 bg-blue-50/20"><TableCell className="text-xs italic flex items-center gap-2"><GraduationCap className="h-3 w-3"/>Scholarship Waiver</TableCell><TableCell className="text-right font-mono text-xs">- {selectedDetail.breakdown.scholarship.toFixed(2)}</TableCell></TableRow>
+                                            <TableRow className="text-blue-600 bg-blue-50/20"><TableCell className="text-xs italic flex items-center gap-2"><GraduationCap className="h-3 w-3"/>Scholarship Waiver</TableCell><TableCell className="text-right font-mono text-xs">- {formatVal(selectedDetail.breakdown.scholarship)}</TableCell></TableRow>
                                         ) : null}
-                                        {selectedDetail?.breakdown.mandatoryItems?.map((f, i) => (<TableRow key={i}><TableCell className="text-xs">{f.name}</TableCell><TableCell className="text-right font-mono text-xs">{Number(f.amount).toFixed(2)}</TableCell></TableRow>))}
-                                        {selectedDetail?.breakdown.optionalItems?.map((f, i) => (<TableRow key={i}><TableCell className="text-xs text-muted-foreground">{f.name}</TableCell><TableCell className="text-right font-mono text-xs">{Number(f.amount).toFixed(2)}</TableCell></TableRow>))}
-                                        {selectedDetail?.breakdown.late && selectedDetail.breakdown.late > 0 ? (<TableRow className="text-destructive bg-red-50/20"><TableCell className="text-xs font-bold">Late Registration Fee</TableCell><TableCell className="text-right font-mono text-xs">{selectedDetail.breakdown.late.toFixed(2)}</TableCell></TableRow>) : null}
+                                        {selectedDetail?.breakdown.mandatoryItems?.map((f, i) => (<TableRow key={i}><TableCell className="text-xs">{f.name}</TableCell><TableCell className="text-right font-mono text-xs">{formatVal(Number(f.amount))}</TableCell></TableRow>))}
+                                        {selectedDetail?.breakdown.optionalItems?.map((f, i) => (<TableRow key={i}><TableCell className="text-xs text-muted-foreground">{f.name}</TableCell><TableCell className="text-right font-mono text-xs">{formatVal(Number(f.amount))}</TableCell></TableRow>))}
+                                        {selectedDetail?.breakdown.late && selectedDetail.breakdown.late > 0 ? (<TableRow className="text-destructive bg-red-50/20"><TableCell className="text-xs font-bold">Late Registration Fee</TableCell><TableCell className="text-right font-mono text-xs">{formatVal(selectedDetail.breakdown.late)}</TableCell></TableRow>) : null}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -2604,7 +3214,7 @@ export default function PaymentsManagementPage() {
                                             <TableRow key={i}>
                                                 <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
                                                 <TableCell className="text-xs font-mono opacity-60 truncate max-w-[120px]">{tx.transactionId}</TableCell>
-                                                <TableCell className="text-right font-black text-xs text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right font-black text-xs text-green-600">{formatVal(tx.amount)}</TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex items-center justify-end gap-1">
                                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handlePrintReceipt(tx, selectedDetail)}><Printer className="h-3.5 w-3.5"/></Button>

@@ -130,6 +130,14 @@ export default function StudentPaymentsPage() {
     const [allSemesters, setAllSemesters] = React.useState<Record<string, Semester>>({});
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '', billingPolicy: 'course' });
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
+    const [currency, setCurrency] = React.useState<'ZMW' | 'USD'>('ZMW');
+
+    const exchangeRate = financialSettings?.exchangeRate || 25;
+    const formatVal = React.useCallback((val: number) => {
+        const amt = currency === 'USD' ? val / exchangeRate : val;
+        const symbol = currency === 'USD' ? "$" : "ZMW";
+        return `${symbol} ${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }, [currency, exchangeRate]);
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
     const [intakeName, setIntakeName] = React.useState('');
     const [loading, setLoading] = React.useState(true);
@@ -360,14 +368,14 @@ export default function StudentPaymentsPage() {
                 return [
                     allCourses[id]?.code || 'N/A', 
                     `Tuition: ${allCourses[id]?.name || 'Unknown'}${p.invoice?.applyScholarship ? ` (${scholarPerc}% Waiver)` : ''}`, 
-                    `ZMW ${finalCost.toFixed(2)}`
+                    formatVal(finalCost)
                 ];
             });
-            const fees = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(f => ['', `Mandatory Fee: ${f.name}`, `ZMW ${f.amount.toFixed(2)}`]) : [];
-            const optional = semester?.optionalFees && p.invoice?.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, `ZMW ${semester.optionalFees![id]?.amount.toFixed(2)}`]) : [];
+            const fees = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(f => ['', `Mandatory Fee: ${f.name}`, formatVal(f.amount)]) : [];
+            const optional = semester?.optionalFees && p.invoice?.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, formatVal(semester.optionalFees![id]?.amount)]) : [];
             const finalBody = [...body, ...fees, ...optional];
             
-            autoTable(doc, { startY: 55, head: [['Code', 'Description', 'Amount']], body: finalBody, theme: 'striped', headStyles: { fillColor: [34, 34, 34] }});
+            autoTable(doc, { startY: 55, head: [['Code', 'Description', `Amount (${currency})`]], body: finalBody, theme: 'striped', headStyles: { fillColor: [34, 34, 34] }});
 
             let currentY = (doc as any).lastAutoTable.finalY + 10;
 
@@ -401,12 +409,12 @@ export default function StudentPaymentsPage() {
             doc.setFontSize(14); 
             doc.setFont('helvetica', 'bold');
             doc.text("Payments Received", 14, currentY);
-            const txRows = p.transactions.map(t => [format(parseISO(t.paymentDate), 'dd MMM yyyy'), t.transactionId, t.method || 'Online', `ZMW ${t.amount.toFixed(2)}`]);
-            autoTable(doc, { startY: currentY + 5, head: [['Date', 'Ref', 'Method', 'Amount']], body: txRows.length > 0 ? txRows : [['-', 'No payments', '-', 'ZMW 0.00']], theme: 'grid' });
+            const txRows = p.transactions.map(t => [format(parseISO(t.paymentDate), 'dd MMM yyyy'), t.transactionId, t.method || 'Online', formatVal(t.amount)]);
+            autoTable(doc, { startY: currentY + 5, head: [['Date', 'Ref', 'Method', `Amount (${currency})`]], body: txRows.length > 0 ? txRows : [['-', 'No payments', '-', formatVal(0)]], theme: 'grid' });
 
             const summaryY = (doc as any).lastAutoTable.finalY + 10;
-            doc.setFontSize(12); doc.text(`Total Paid: ZMW ${p.totalPaid.toFixed(2)}`, 190, summaryY, { align: 'right' });
-            doc.text(`BALANCE: ZMW ${p.balance.toFixed(2)}`, 190, summaryY + 8, { align: 'right' });
+            doc.setFontSize(12); doc.text(`Total Paid: ${formatVal(p.totalPaid)}`, 190, summaryY, { align: 'right' });
+            doc.text(`BALANCE: ${formatVal(p.balance)}`, 190, summaryY + 8, { align: 'right' });
 
             doc.save(`invoice-${p.invoice?.invoiceId}.pdf`);
             toast({ title: 'Invoice Downloaded' });
@@ -430,10 +438,40 @@ export default function StudentPaymentsPage() {
                             <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
                             <CardDescription>View your billing history and payment records.</CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-background shadow-sm px-3 py-1">Intake: {intakeName}</Badge>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Multi-Currency Controls */}
+                            <div className="flex items-center gap-1 border border-primary/10 rounded-lg p-0.5 bg-background shadow-sm mr-2 h-10 px-1.5">
+                                <button
+                                    onClick={() => setCurrency('ZMW')}
+                                    className={cn(
+                                        "px-3 py-1 text-xs font-black rounded-md transition-all h-7 flex items-center justify-center",
+                                        currency === 'ZMW' 
+                                            ? "bg-primary text-white shadow-sm" 
+                                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    )}
+                                >
+                                    ZMW
+                                </button>
+                                <button
+                                    onClick={() => setCurrency('USD')}
+                                    className={cn(
+                                        "px-3 py-1 text-xs font-black rounded-md transition-all h-7 flex items-center justify-center",
+                                        currency === 'USD' 
+                                            ? "bg-primary text-white shadow-sm" 
+                                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    )}
+                                >
+                                    USD
+                                </button>
+                                {currency === 'USD' && (
+                                    <span className="text-[10px] text-muted-foreground font-black px-2 border-l border-muted-foreground/20 whitespace-nowrap">
+                                        Rate: 1 USD = {exchangeRate} ZMW
+                                    </span>
+                                )}
+                            </div>
+                            <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-background shadow-sm px-3 py-1 h-10 flex items-center">Intake: {intakeName}</Badge>
                             {academicStanding && (
-                                <Badge variant="secondary" className="gap-1.5 font-bold h-10 px-4 text-sm border-primary/20 bg-background text-primary shadow-md">
+                                <Badge variant="secondary" className="gap-1.5 font-bold h-10 px-4 text-sm border-primary/20 bg-background text-primary shadow-md flex items-center">
                                     <CalendarDays className="h-4 w-4" />
                                     Standing: {academicStanding}
                                 </Badge>
@@ -496,17 +534,17 @@ export default function StudentPaymentsPage() {
                                                         {payment.breakdown.courses.map((course: any) => (
                                                             <div key={course.id} className="flex justify-between items-center">
                                                                 <span className="font-medium text-muted-foreground">{course.code} - {course.name}</span>
-                                                                <span className="font-semibold">ZMW {course.cost.toFixed(2)}</span>
+                                                                <span className="font-semibold">{formatVal(course.cost)}</span>
                                                             </div>
                                                         ))}
                                                         <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
                                                             <span>Tuition Subtotal</span>
-                                                            <span>ZMW {payment.breakdown.tuition.toFixed(2)}</span>
+                                                            <span>{formatVal(payment.breakdown.tuition)}</span>
                                                         </div>
                                                     </div>
                                                 </div>
                                             )}
-
+ 
                                             {/* Itemized Mandatory Fees */}
                                             {payment.breakdown.mandatoryItems && payment.breakdown.mandatoryItems.length > 0 && (
                                                 <div className="space-y-1.5">
@@ -515,17 +553,17 @@ export default function StudentPaymentsPage() {
                                                         {payment.breakdown.mandatoryItems.map((fee: any, idx: number) => (
                                                             <div key={idx} className="flex justify-between items-center">
                                                                 <span className="font-medium text-muted-foreground">{fee.name}</span>
-                                                                <span className="font-semibold">ZMW {fee.amount.toFixed(2)}</span>
+                                                                <span className="font-semibold">{formatVal(fee.amount)}</span>
                                                             </div>
                                                         ))}
                                                         <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
                                                             <span>Mandatory Subtotal</span>
-                                                            <span>ZMW {payment.breakdown.mandatory.toFixed(2)}</span>
+                                                            <span>{formatVal(payment.breakdown.mandatory)}</span>
                                                         </div>
                                                     </div>
                                                 </div>
                                             )}
-
+ 
                                             {/* Itemized Optional Fees */}
                                             {payment.breakdown.optionalItems && payment.breakdown.optionalItems.length > 0 && (
                                                 <div className="space-y-1.5">
@@ -534,36 +572,36 @@ export default function StudentPaymentsPage() {
                                                         {payment.breakdown.optionalItems.map((fee: any, idx: number) => (
                                                             <div key={idx} className="flex justify-between items-center">
                                                                 <span className="font-medium text-muted-foreground">{fee.name}</span>
-                                                                <span className="font-semibold">ZMW {fee.amount.toFixed(2)}</span>
+                                                                <span className="font-semibold">{formatVal(fee.amount)}</span>
                                                             </div>
                                                         ))}
                                                         <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
                                                             <span>Optional Subtotal</span>
-                                                            <span>ZMW {payment.breakdown.optional.toFixed(2)}</span>
+                                                            <span>{formatVal(payment.breakdown.optional)}</span>
                                                         </div>
                                                     </div>
                                                 </div>
                                             )}
-
+ 
                                             {payment.breakdown.scholarship > 0 && (
                                                 <div className="flex justify-between text-sm text-blue-600 italic">
                                                     <span>Scholarship Waiver ({payment.scholarshipInfo?.percentage}%)</span>
-                                                    <span className="font-bold">- ZMW {payment.breakdown.scholarship.toFixed(2)}</span>
+                                                    <span className="font-bold">- {formatVal(payment.breakdown.scholarship)}</span>
                                                 </div>
                                             )}
                                             {payment.breakdown.late > 0 && (
                                                 <div className="flex justify-between text-sm text-destructive">
                                                     <span>Late Registration Fees</span>
-                                                    <span className="font-bold">ZMW {payment.breakdown.late.toFixed(2)}</span>
+                                                    <span className="font-bold">{formatVal(payment.breakdown.late)}</span>
                                                 </div>
                                             )}
                                             <Separator />
                                             <div className="flex justify-between items-center">
                                                 <span className="text-xs font-bold opacity-60">Net Payable</span>
-                                                <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
+                                                <span className="font-bold">{formatVal(payment.totalDue)}</span>
                                             </div>
-                                            <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
-                                            <div className="flex justify-between font-black text-destructive border-t pt-2 mt-2 text-base"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>
+                                            <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">{formatVal(payment.totalPaid)}</span></div>
+                                            <div className="flex justify-between font-black text-destructive border-t pt-2 mt-2 text-base"><span>Balance</span><span>{formatVal(payment.balance)}</span></div>
                                         </div>
                                     </div>
                                     <div className="space-y-4">
