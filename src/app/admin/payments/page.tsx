@@ -50,7 +50,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
-import { ref, get, set, push, onValue, off, serverTimestamp, update } from 'firebase/database';
+import { ref, get, set, push, onValue, off, serverTimestamp, update, remove } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -63,7 +63,8 @@ import {
     DialogTitle, 
     DialogDescription, 
     DialogFooter, 
-    DialogClose 
+    DialogClose,
+    DialogTrigger 
 } from '@/components/ui/dialog';
 import {
     DropdownMenu,
@@ -280,6 +281,40 @@ export default function PaymentsManagementPage() {
     const [saving, setSaving] = React.useState(false);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     
+    // Local system pages states when QuickBooks is disabled
+    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState<boolean>(false);
+    const [localBudget, setLocalBudget] = React.useState<any[]>([]);
+    const [localAnnualBudget, setLocalAnnualBudget] = React.useState<any[]>([]);
+    const [localRequisitions, setLocalRequisitions] = React.useState<any[]>([]);
+    
+    // Budget Category Allocation Dialog
+    const [isBudgetOpen, setIsBudgetOpen] = React.useState(false);
+    const [budgetCategory, setBudgetCategory] = React.useState('');
+    const [budgetedAmount, setBudgetedAmount] = React.useState('');
+    const [budgetSaving, setBudgetSaving] = React.useState(false);
+
+    // Annual Budget Department Allocation Dialog
+    const [isAnnualOpen, setIsAnnualOpen] = React.useState(false);
+    const [annualDept, setAnnualDept] = React.useState('');
+    const [annualAmount, setAnnualAmount] = React.useState('');
+    const [annualSaving, setAnnualSaving] = React.useState(false);
+
+    // Department Requisition Request Dialog
+    const [isReqOpen, setIsReqOpen] = React.useState(false);
+    const [reqDept, setReqDept] = React.useState('');
+    const [reqDesc, setReqDesc] = React.useState('');
+    const [reqAmt, setReqAmt] = React.useState('');
+    const [reqSaving, setReqSaving] = React.useState(false);
+
+    // Dynamic Forecasting States
+    const [forecastGrowthRate, setForecastGrowthRate] = React.useState<number>(10);
+    const [forecastTuitionFee, setForecastTuitionFee] = React.useState<number>(12000);
+    const [forecastFeePerStudent, setForecastFeePerStudent] = React.useState<number>(1500);
+
+    // Local Reports Hub
+    const [financeReportType, setFinanceReportType] = React.useState('income');
+    const [reportLoading, setReportLoading] = React.useState(false);
+    
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('current');
@@ -374,7 +409,11 @@ export default function PaymentsManagementPage() {
         academicCalendar: ref(db, 'settings/academicCalendar'),
         scholarships: ref(db, 'scholarships'),
         institution: ref(db, 'settings/institution'),
-        expenses: ref(db, 'expenses')
+        expenses: ref(db, 'expenses'),
+        quickbooks: ref(db, 'settings/integrations/quickbooks'),
+        budget: ref(db, 'budget'),
+        annualBudget: ref(db, 'annualBudget'),
+        requisitions: ref(db, 'departmentalRequisitions')
     }), []);
 
     const computeDerived = React.useCallback((store: any) => {
@@ -584,6 +623,24 @@ export default function PaymentsManagementPage() {
             store.expenses = data;
             computeDerived(store);
         }));
+        unsubs.push(onValue(dataRefs.quickbooks, (s) => {
+            const data = s.val() || {};
+            setIsQuickBooksEnabled(!!data.enabled);
+        }));
+        unsubs.push(onValue(dataRefs.budget, (s) => {
+            const data = s.val() || {};
+            setLocalBudget(Object.keys(data).map(id => ({ id, ...data[id] })));
+        }));
+        unsubs.push(onValue(dataRefs.annualBudget, (s) => {
+            const data = s.val() || {};
+            setLocalAnnualBudget(Object.keys(data).map(id => ({ id, ...data[id] })));
+        }));
+        unsubs.push(onValue(dataRefs.requisitions, (s) => {
+            const data = s.val() || {};
+            const list = Object.keys(data).map(id => ({ id, ...data[id] }));
+            list.sort((a: any, b: any) => (b.submittedAt || 0) - (a.submittedAt || 0));
+            setLocalRequisitions(list);
+        }));
 
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, dataRefs, computeDerived]);
@@ -600,6 +657,212 @@ export default function PaymentsManagementPage() {
         if (secs < 60) return `${secs}s ago`;
         const mins = Math.floor(secs / 60);
         return `${mins}m ago`;
+    };
+
+    // Local system logic implementations
+    const localBudgetWithActuals = React.useMemo(() => {
+        const expenseByCategory: Record<string, number> = {};
+        expensesList.forEach((exp: any) => {
+            expenseByCategory[exp.category] = (expenseByCategory[exp.category] || 0) + (parseFloat(exp.amount) || 0);
+        });
+        return localBudget.map(item => ({
+            ...item,
+            actual: expenseByCategory[item.category] || 0,
+        }));
+    }, [localBudget, expensesList]);
+
+    const localAnnualBudgetWithActuals = React.useMemo(() => {
+        const expenseByDept: Record<string, number> = {};
+        expensesList.forEach((exp: any) => {
+            let dept = "Administration";
+            if (exp.category === "Salaries") dept = "Administration";
+            else if (exp.category === "Infrastructure" || exp.category === "Utilities") dept = "Maintenance";
+            else if (exp.category === "Scholarships" || exp.category === "Equipment") dept = "Academics";
+            else if (exp.category === "Supplies") dept = "Library";
+            
+            expenseByDept[dept] = (expenseByDept[dept] || 0) + (parseFloat(exp.amount) || 0);
+        });
+        return localAnnualBudget.map(item => ({
+            ...item,
+            actual: expenseByDept[item.department] || 0,
+        }));
+    }, [localAnnualBudget, expensesList]);
+
+    const handleSaveBudget = async () => {
+        if (!budgetCategory || !budgetedAmount) return;
+        setBudgetSaving(true);
+        try {
+            await push(ref(db, 'budget'), { category: budgetCategory, budgeted: parseFloat(budgetedAmount), actual: 0 });
+            toast({ title: "Budget Item Added" });
+            setBudgetCategory('');
+            setBudgetedAmount('');
+            setIsBudgetOpen(false);
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to add item' });
+        } finally {
+            setBudgetSaving(false);
+        }
+    };
+
+    const handleDeleteBudget = async (id: string) => {
+        if (!window.confirm("Are you sure?")) return;
+        await remove(ref(db, `budget/${id}`));
+        toast({ title: 'Budget item removed' });
+    };
+
+    const handleSaveAnnual = async () => {
+        if (!annualDept || !annualAmount) return;
+        setAnnualSaving(true);
+        try {
+            await push(ref(db, 'annualBudget'), { department: annualDept, budgeted: parseFloat(annualAmount), actual: 0 });
+            toast({ title: "Annual Allocation Added" });
+            setAnnualDept('');
+            setAnnualAmount('');
+            setIsAnnualOpen(false);
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to add allocation' });
+        } finally {
+            setAnnualSaving(false);
+        }
+    };
+
+    const handleDeleteAnnual = async (id: string) => {
+        if (!window.confirm("Are you sure?")) return;
+        await remove(ref(db, `annualBudget/${id}`));
+        toast({ title: 'Annual allocation removed' });
+    };
+
+    const handleSaveRequisition = async () => {
+        if (!reqDept || !reqDesc || !reqAmt) return;
+        setReqSaving(true);
+        try {
+            await push(ref(db, 'departmentalRequisitions'), {
+                department: reqDept,
+                description: reqDesc,
+                amount: parseFloat(reqAmt),
+                status: 'pending',
+                submittedAt: Date.now(),
+                requestedBy: userData?.name || 'Accounts Staff'
+            });
+            toast({ title: "Requisition Submitted Successfully" });
+            setReqDept('');
+            setReqDesc('');
+            setReqAmt('');
+            setIsReqOpen(false);
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to submit requisition' });
+        } finally {
+            setReqSaving(false);
+        }
+    };
+
+    const handleApproveRequisition = async (id: string) => {
+        try {
+            await update(ref(db, `departmentalRequisitions/${id}`), { status: 'approved' });
+            toast({ title: "Requisition Approved" });
+        } catch (e) {
+            toast({ variant: 'destructive', title: "Action failed" });
+        }
+    };
+
+    const handleRejectRequisition = async (id: string) => {
+        try {
+            await update(ref(db, `departmentalRequisitions/${id}`), { status: 'rejected' });
+            toast({ title: "Requisition Rejected" });
+        } catch (e) {
+            toast({ variant: 'destructive', title: "Action failed" });
+        }
+    };
+
+    const handleGenerateFinanceReport = async () => {
+        setReportLoading(true);
+        try {
+            const [txSnap, expSnap, invSnap, usersSnap, scholSnap] = await Promise.all([
+                get(ref(db, 'transactions')),
+                get(ref(db, 'expenses')),
+                get(ref(db, 'invoices')),
+                get(ref(db, 'users')),
+                get(ref(db, 'scholarships'))
+            ]);
+
+            const transactions = Object.values(txSnap.val() || {}).filter((t: any) => t.status === 'successful') as any[];
+            const expenses = Object.values(expSnap.val() || {}) as any[];
+            const allUsers = (usersSnap.val() || {}) as Record<string, any>;
+            const allSchols = (scholSnap.val() || {}) as Record<string, any>;
+            
+            const doc = new jsPDF();
+            doc.setFontSize(20);
+            const reportTitle = financeReportType === 'income' ? 'Income Statement' 
+                : (financeReportType === 'cashflow' ? 'Cash Flow Report' 
+                : (financeReportType === 'scholarships' ? 'Scholarship Recipients Report' : 'Revenue Summary'));
+            
+            doc.text(reportTitle, 14, 22);
+            doc.setFontSize(10);
+            doc.text(`Generated on: ${format(new Date(), 'PPP p')}`, 14, 30);
+
+            if (financeReportType === 'income') {
+                const totalIncome = transactions.reduce((sum, t: any) => sum + t.amount, 0);
+                const totalExpenses = expenses.reduce((sum, e: any) => sum + e.amount, 0);
+                
+                autoTable(doc, {
+                    startY: 40,
+                    head: [['Category', 'Amount (ZMW)']],
+                    body: [
+                        ['Total Student Payments', totalIncome.toFixed(2)],
+                        ['Total Operating Expenses', `(${totalExpenses.toFixed(2)})`],
+                        ['Net Surplus / (Deficit)', (totalIncome - totalExpenses).toFixed(2)]
+                    ],
+                    theme: 'striped',
+                    headStyles: { fillColor: [34, 34, 34] },
+                    styles: { fontStyle: 'bold' }
+                });
+            } else if (financeReportType === 'revenue') {
+                 autoTable(doc, {
+                    startY: 40,
+                    head: [['Date', 'Transaction ID', 'Amount (ZMW)', 'Method']],
+                    body: transactions.map((t: any) => [format(new Date(t.paymentDate), 'MMM dd, yyyy'), t.transactionId, t.amount.toFixed(2), t.method || 'Online']),
+                    theme: 'grid'
+                });
+            } else if (financeReportType === 'scholarships') {
+                const recipients = Object.keys(allUsers)
+                    .filter(uid => allUsers[uid].scholarshipId)
+                    .map(uid => {
+                        const u = allUsers[uid];
+                        const s = allSchols[u.scholarshipId];
+                        return [u.id, u.name, s?.name || 'Unknown', `${s?.percentage || 0}%`, s?.donor || '-'];
+                    });
+
+                autoTable(doc, {
+                    startY: 40,
+                    head: [['Student ID', 'Name', 'Scholarship Name', 'Waiver %', 'Donor/Sponsor']],
+                    body: recipients,
+                    theme: 'striped',
+                    headStyles: { fillColor: [41, 128, 185] }
+                });
+            } else if (financeReportType === 'cashflow') {
+                const totalIncome = transactions.reduce((sum, t: any) => sum + t.amount, 0);
+                const totalExpenses = expenses.reduce((sum, e: any) => sum + e.amount, 0);
+                autoTable(doc, {
+                    startY: 40,
+                    head: [['Metric', 'Value (ZMW)']],
+                    body: [
+                        ['Actual Revenue (Payments)', totalIncome.toFixed(2)],
+                        ['Actual Operating Expenses', totalExpenses.toFixed(2)],
+                        ['Projected Next Semester Billing', (totalIncome * 1.15).toFixed(2)],
+                        ['Projected Variance Margin', ((totalIncome * 1.15) - totalExpenses).toFixed(2)]
+                    ],
+                    theme: 'grid',
+                    headStyles: { fillColor: [39, 174, 96] }
+                });
+            }
+
+            doc.save(`${financeReportType}_report_${Date.now()}.pdf`);
+            toast({ title: 'Report Generated' });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to generate report' });
+        } finally {
+            setReportLoading(false);
+        }
     };
 
     const handleRefreshData = async () => {
@@ -1768,19 +2031,401 @@ export default function PaymentsManagementPage() {
                     )}
 
                     {currentTab !== "Overview" && currentTab !== "Invoices" && currentTab !== "Fee Collection" && currentTab !== "Transactions" && (
-                        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center shadow-sm">
-                            <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
-                                <Settings className="h-8 w-8 animate-spin-slow text-blue-600" />
+                        isQuickBooksEnabled ? (
+                            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center shadow-sm">
+                                <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+                                    <Settings className="h-8 w-8 animate-spin-slow text-blue-600" />
+                                </div>
+                                <h3 className="text-base font-bold text-gray-900 mb-1">{tabsList.find(t => t.id === currentTab)?.label} Console</h3>
+                                <p className="text-xs text-gray-500 max-w-md mx-auto mb-6">
+                                    This financial workspace section is synchronized via QuickBooks & Sage. Budget sheets, departmental requisitions, and compliance forecasting are managed under this period.
+                                </p>
+                                <div className="flex justify-center gap-3">
+                                    <Button size="sm" onClick={() => toast({ title: "Module Sync", description: "Triggered standard integrations synchronization." })}>Sync QuickBooks</Button>
+                                    <Button size="sm" variant="outline" onClick={() => setCurrentTab("Overview")}>Return to Overview</Button>
+                                </div>
                             </div>
-                            <h3 className="text-base font-bold text-gray-900 mb-1">{tabsList.find(t => t.id === currentTab)?.label} Console</h3>
-                            <p className="text-xs text-gray-500 max-w-md mx-auto mb-6">
-                                This financial workspace section is synchronized via QuickBooks & Sage. Budget sheets, departmental requisitions, and compliance forecasting are managed under this period.
-                            </p>
-                            <div className="flex justify-center gap-3">
-                                <Button size="sm" onClick={() => toast({ title: "Module Sync", description: "Triggered standard integrations synchronization." })}>Sync QuickBooks</Button>
-                                <Button size="sm" variant="outline" onClick={() => setCurrentTab("Overview")}>Return to Overview</Button>
+                        ) : (
+                            <div className="space-y-6 animate-in fade-in duration-200">
+                                {currentTab === "Budget" && (
+                                    <Card className="border-0 shadow-md">
+                                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                            <div>
+                                                <CardTitle className="text-xl">Local Budget Allocations</CardTitle>
+                                                <CardDescription>Consolidated record of institutional categories, budgeted limits, and actual spending.</CardDescription>
+                                            </div>
+                                            <Dialog open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
+                                                <DialogTrigger asChild>
+                                                    <Button size="sm"><PlusCircle className="mr-2 h-4 w-4"/>New Budget Category</Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>New Budget Allocation</DialogTitle></DialogHeader>
+                                                    <div className="grid gap-4 py-4">
+                                                        <div className="space-y-1">
+                                                            <Label>Category / Expense Group</Label>
+                                                            <Select value={budgetCategory} onValueChange={setBudgetCategory}>
+                                                                <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="Salaries">Salaries</SelectItem>
+                                                                    <SelectItem value="Infrastructure">Infrastructure</SelectItem>
+                                                                    <SelectItem value="Scholarships">Scholarships</SelectItem>
+                                                                    <SelectItem value="Utilities">Utilities</SelectItem>
+                                                                    <SelectItem value="Equipment">Equipment</SelectItem>
+                                                                    <SelectItem value="Others">Others</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1"><Label>Budgeted Amount (ZMW)</Label><Input type="number" placeholder="50000" value={budgetedAmount} onChange={e => setBudgetedAmount(e.target.value)}/></div>
+                                                    </div>
+                                                    <DialogFooter>
+                                                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                                        <Button onClick={handleSaveBudget} disabled={budgetSaving}>{budgetSaving && <Loader2 className="mr-2 animate-spin"/>}Save Allocation</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="rounded-md border overflow-hidden">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow className="bg-muted/50">
+                                                            <TableHead>Category</TableHead>
+                                                            <TableHead className="text-right">Budgeted Limit</TableHead>
+                                                            <TableHead className="text-right">Actual Spent</TableHead>
+                                                            <TableHead className="text-right">Variance / Remaining</TableHead>
+                                                            <TableHead className="text-right">Actions</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {localBudgetWithActuals.length > 0 ? (
+                                                            localBudgetWithActuals.map(item => {
+                                                                const variance = item.budgeted - item.actual;
+                                                                const percent = Math.min(100, (item.actual / item.budgeted) * 100);
+                                                                return (
+                                                                    <TableRow key={item.id}>
+                                                                        <TableCell>
+                                                                            <div className="space-y-1">
+                                                                                <p className="font-semibold text-xs">{item.category}</p>
+                                                                                <div className="w-48 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                                                                    <div className={cn("h-1.5 rounded-full", percent > 90 ? "bg-red-500" : percent > 75 ? "bg-orange-500" : "bg-blue-600")} style={{ width: `${percent}%` }}></div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </TableCell>
+                                                                        <TableCell className="text-right font-mono text-xs">{item.budgeted.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW</TableCell>
+                                                                        <TableCell className="text-right font-mono text-xs text-orange-600">{item.actual.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW</TableCell>
+                                                                        <TableCell className={cn("text-right font-mono text-xs font-bold", variance < 0 ? "text-red-600" : "text-green-600")}>
+                                                                            {variance.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW
+                                                                        </TableCell>
+                                                                        <TableCell className="text-right">
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteBudget(item.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic text-xs">No budget items configured. Click 'New Budget Category' to begin.</TableCell></TableRow>
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {currentTab === "Annual Budget" && (
+                                    <Card className="border-0 shadow-md">
+                                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                            <div>
+                                                <CardTitle className="text-xl">Annual Departmental Allocations</CardTitle>
+                                                <CardDescription>Set long-term fiscal plans by academic and administrative departments.</CardDescription>
+                                            </div>
+                                            <Dialog open={isAnnualOpen} onOpenChange={setIsAnnualOpen}>
+                                                <DialogTrigger asChild>
+                                                    <Button size="sm"><PlusCircle className="mr-2 h-4 w-4"/>New Annual Allocation</Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>New Annual Allocation</DialogTitle></DialogHeader>
+                                                    <div className="grid gap-4 py-4">
+                                                        <div className="space-y-1">
+                                                            <Label>Department / Division</Label>
+                                                            <Select value={annualDept} onValueChange={setAnnualDept}>
+                                                                <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="Academics">Academics</SelectItem>
+                                                                    <SelectItem value="Administration">Administration</SelectItem>
+                                                                    <SelectItem value="Maintenance">Maintenance</SelectItem>
+                                                                    <SelectItem value="Library">Library</SelectItem>
+                                                                    <SelectItem value="Clinicals">Clinicals</SelectItem>
+                                                                    <SelectItem value="Student Life">Student Life</SelectItem>
+                                                                    <SelectItem value="Research">Research</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1"><Label>Allocated Funding (ZMW)</Label><Input type="number" placeholder="250000" value={annualAmount} onChange={e => setAnnualAmount(e.target.value)}/></div>
+                                                    </div>
+                                                    <DialogFooter>
+                                                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                                        <Button onClick={handleSaveAnnual} disabled={annualSaving}>{annualSaving && <Loader2 className="mr-2 animate-spin"/>}Save Allocation</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="rounded-md border overflow-hidden">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow className="bg-muted/50">
+                                                            <TableHead>Department</TableHead>
+                                                            <TableHead className="text-right">Annual Budget</TableHead>
+                                                            <TableHead className="text-right">YTD Actual Spent</TableHead>
+                                                            <TableHead className="text-right">Remaining Balance</TableHead>
+                                                            <TableHead className="text-right">Actions</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {localAnnualBudgetWithActuals.length > 0 ? (
+                                                            localAnnualBudgetWithActuals.map(item => {
+                                                                const variance = item.budgeted - item.actual;
+                                                                return (
+                                                                    <TableRow key={item.id}>
+                                                                        <TableCell className="font-semibold text-xs">{item.department}</TableCell>
+                                                                        <TableCell className="text-right font-mono text-xs">{item.budgeted.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW</TableCell>
+                                                                        <TableCell className="text-right font-mono text-xs text-orange-600">{item.actual.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW</TableCell>
+                                                                        <TableCell className={cn("text-right font-mono text-xs font-bold", variance < 0 ? "text-red-600" : "text-green-600")}>
+                                                                            {variance.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW
+                                                                        </TableCell>
+                                                                        <TableCell className="text-right">
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteAnnual(item.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic text-xs">No annual departmental allocations found.</TableCell></TableRow>
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {currentTab === "Forecasting" && (
+                                    <Card className="border-0 shadow-md">
+                                        <CardHeader>
+                                            <CardTitle className="text-xl">Student Revenue & Enrollment Forecasting</CardTitle>
+                                            <CardDescription>Predict upcoming financial standings based on enrollment growth simulations and active billing statistics.</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="space-y-6">
+                                            <div className="grid md:grid-cols-4 gap-4">
+                                                <Card className="bg-blue-50/40 border-blue-100 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Active Students</p>
+                                                    <p className="text-2xl font-extrabold text-blue-900 mt-1">{paymentInfos.length}</p>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">Currently enrolled roster</p>
+                                                </Card>
+                                                <Card className="bg-purple-50/40 border-purple-100 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Expected Gross Tuition</p>
+                                                    <p className="text-2xl font-extrabold text-purple-900 mt-1">{paymentInfos.reduce((sum, p) => sum + p.totalDue, 0).toLocaleString()} ZMW</p>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">Tuition & fees post-waivers</p>
+                                                </Card>
+                                                <Card className="bg-green-50/40 border-green-100 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Total Collected</p>
+                                                    <p className="text-2xl font-extrabold text-green-900 mt-1">{paymentInfos.reduce((sum, p) => sum + p.totalPaid, 0).toLocaleString()} ZMW</p>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">Successful payments received</p>
+                                                </Card>
+                                                <Card className="bg-red-50/40 border-red-100 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Outstandings Shortfall</p>
+                                                    <p className="text-2xl font-extrabold text-red-900 mt-1">{paymentInfos.reduce((sum, p) => sum + p.balance, 0).toLocaleString()} ZMW</p>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">Collection target remaining</p>
+                                                </Card>
+                                            </div>
+
+                                            <div className="p-6 border rounded-lg bg-muted/10 space-y-4">
+                                                <h3 className="font-bold text-sm text-gray-900">Configure Growth Simulation</h3>
+                                                <div className="grid md:grid-cols-3 gap-6 items-end">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-xs font-bold">Projected Enrollment Growth</Label>
+                                                        <Select value={String(forecastGrowthRate)} onValueChange={v => setForecastGrowthRate(Number(v))}>
+                                                            <SelectTrigger className="h-10"><SelectValue/></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="0">Static Growth (0%)</SelectItem>
+                                                                <SelectItem value="5">Conservative (+5%)</SelectItem>
+                                                                <SelectItem value="10">Target Growth (+10%)</SelectItem>
+                                                                <SelectItem value="20">High Growth (+20%)</SelectItem>
+                                                                <SelectItem value="30">Aggressive Expansion (+30%)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-xs font-bold">Average Tuition Fee (per student)</Label>
+                                                        <Input type="number" value={forecastTuitionFee} onChange={e => setForecastTuitionFee(Number(e.target.value))} className="h-10"/>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-xs font-bold">Average Mandatory Fee (per student)</Label>
+                                                        <Input type="number" value={forecastFeePerStudent} onChange={e => setForecastFeePerStudent(Number(e.target.value))} className="h-10"/>
+                                                    </div>
+                                                </div>
+
+                                                <Separator className="my-4"/>
+
+                                                <div className="grid md:grid-cols-2 gap-6 pt-2">
+                                                    <div className="space-y-2">
+                                                        <p className="text-xs font-bold text-gray-700">Forecasted Enrollment</p>
+                                                        <div className="p-4 border rounded bg-white flex justify-between items-center">
+                                                            <span className="text-xs text-muted-foreground">Projected Student Body:</span>
+                                                            <span className="text-lg font-black text-blue-700">{Math.round(paymentInfos.length * (1 + forecastGrowthRate / 100))} Students</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <p className="text-xs font-bold text-gray-700">Projected Gross Billings</p>
+                                                        <div className="p-4 border rounded bg-white flex justify-between items-center">
+                                                            <span className="text-xs text-muted-foreground">Estimated Income:</span>
+                                                            <span className="text-lg font-black text-green-700">
+                                                                {(Math.round(paymentInfos.length * (1 + forecastGrowthRate / 100)) * (forecastTuitionFee + forecastFeePerStudent)).toLocaleString()} ZMW
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {currentTab === "Dept. Requests" && (
+                                    <Card className="border-0 shadow-md">
+                                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                            <div>
+                                                <CardTitle className="text-xl">Departmental Requisitions</CardTitle>
+                                                <CardDescription>Track and authorize funding requests submitted by university divisions.</CardDescription>
+                                            </div>
+                                            <Dialog open={isReqOpen} onOpenChange={setIsReqOpen}>
+                                                <DialogTrigger asChild>
+                                                    <Button size="sm"><PlusCircle className="mr-2 h-4 w-4"/>New Requisition</Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>New Requisition Request</DialogTitle></DialogHeader>
+                                                    <div className="grid gap-4 py-4">
+                                                        <div className="space-y-1">
+                                                            <Label>Department / Division</Label>
+                                                            <Select value={reqDept} onValueChange={setReqDept}>
+                                                                <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="Academics">Academics</SelectItem>
+                                                                    <SelectItem value="Administration">Administration</SelectItem>
+                                                                    <SelectItem value="Maintenance">Maintenance</SelectItem>
+                                                                    <SelectItem value="Library">Library</SelectItem>
+                                                                    <SelectItem value="Clinicals">Clinicals</SelectItem>
+                                                                    <SelectItem value="Student Life">Student Life</SelectItem>
+                                                                    <SelectItem value="Research">Research</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1"><Label>Description / Item Purpose</Label><Input placeholder="e.g. Lab equipment replacement parts" value={reqDesc} onChange={e => setReqDesc(e.target.value)}/></div>
+                                                        <div className="space-y-1"><Label>Requested Funding Amount (ZMW)</Label><Input type="number" placeholder="12500" value={reqAmt} onChange={e => setReqAmt(e.target.value)}/></div>
+                                                    </div>
+                                                    <DialogFooter>
+                                                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                                        <Button onClick={handleSaveRequisition} disabled={reqSaving}>{reqSaving && <Loader2 className="mr-2 animate-spin"/>}Submit Requisition</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="rounded-md border overflow-hidden">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow className="bg-muted/50">
+                                                            <TableHead>Date</TableHead>
+                                                            <TableHead>Department</TableHead>
+                                                            <TableHead>Description</TableHead>
+                                                            <TableHead className="text-right">Amount</TableHead>
+                                                            <TableHead>Requested By</TableHead>
+                                                            <TableHead>Status</TableHead>
+                                                            <TableHead className="text-right">Actions</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {localRequisitions.length > 0 ? (
+                                                            localRequisitions.map(item => (
+                                                                <TableRow key={item.id}>
+                                                                    <TableCell className="text-xs whitespace-nowrap">{new Date(item.submittedAt || Date.now()).toLocaleDateString()}</TableCell>
+                                                                    <TableCell className="font-semibold text-xs">{item.department}</TableCell>
+                                                                    <TableCell className="text-xs">{item.description}</TableCell>
+                                                                    <TableCell className="text-right font-mono text-xs">{item.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} ZMW</TableCell>
+                                                                    <TableCell className="text-xs text-muted-foreground">{item.requestedBy || 'N/A'}</TableCell>
+                                                                    <TableCell>
+                                                                        {item.status === 'pending' && <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Pending Approval</Badge>}
+                                                                        {item.status === 'approved' && <Badge className="bg-green-100 text-green-800 border-green-200">Approved</Badge>}
+                                                                        {item.status === 'rejected' && <Badge variant="destructive">Rejected</Badge>}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        {item.status === 'pending' && (
+                                                                            <div className="flex justify-end gap-1.5">
+                                                                                <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50 h-7 text-[10px]" onClick={() => handleApproveRequisition(item.id)}>Approve</Button>
+                                                                                <Button size="sm" variant="ghost" className="text-destructive hover:bg-red-50 h-7 text-[10px]" onClick={() => handleRejectRequisition(item.id)}>Reject</Button>
+                                                                            </div>
+                                                                        )}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ))
+                                                        ) : (
+                                                            <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground italic text-xs">No requisitions submitted.</TableCell></TableRow>
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {currentTab === "Reports" && (
+                                    <Card className="border-0 shadow-md">
+                                        <CardHeader>
+                                            <CardTitle className="text-xl">Financial Reporting Hub</CardTitle>
+                                            <CardDescription>Generate and download comprehensive financial statements and collections summaries.</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="space-y-8">
+                                            <div className="grid md:grid-cols-3 gap-6">
+                                                <Card className="bg-blue-500/5 border-blue-500/10 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Monthly Income</p>
+                                                    <div className="text-sm font-bold flex items-center gap-2 text-blue-700 mt-1"><TrendingUp className="text-green-600 h-4 w-4"/> Analysis Ready</div>
+                                                </Card>
+                                                <Card className="bg-red-500/5 border-red-500/10 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Monthly Expenses</p>
+                                                    <div className="text-sm font-bold flex items-center gap-2 text-red-700 mt-1"><TrendingDown className="text-red-600 h-4 w-4"/> Tracking Active</div>
+                                                </Card>
+                                                <Card className="bg-green-500/5 border-green-500/10 p-4">
+                                                    <p className="text-[10px] uppercase font-bold text-gray-500">Scholarships</p>
+                                                    <div className="text-sm font-bold flex items-center gap-2 text-green-700 mt-1"><GraduationCap className="text-blue-600 h-4 w-4"/> Waiver Logs</div>
+                                                </Card>
+                                            </div>
+
+                                            <div className="space-y-4 p-6 border rounded-lg bg-muted/10">
+                                                <h3 className="font-bold text-sm">Generate Official Document</h3>
+                                                <div className="grid md:grid-cols-2 gap-6 items-end">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-xs">Select Statement Type</Label>
+                                                        <Select value={financeReportType} onValueChange={setFinanceReportType}>
+                                                            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="income">Income Statement (P&L)</SelectItem>
+                                                                <SelectItem value="revenue">Detailed Revenue Log</SelectItem>
+                                                                <SelectItem value="scholarships">Scholarship Recipients List</SelectItem>
+                                                                <SelectItem value="cashflow">Cash Flow Projection</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <Button className="h-10" onClick={handleGenerateFinanceReport} disabled={reportLoading}>
+                                                        {reportLoading ? <Loader2 className="mr-2 animate-spin"/> : <Download className="mr-2 h-4 w-4"/>}
+                                                        Generate & Download PDF
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
                             </div>
-                        </div>
+                        )
                     )}
                 </div>
             </div>

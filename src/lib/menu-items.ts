@@ -45,6 +45,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/registration-management', label: 'Registration Management', icon: Settings, notificationKey: 'missingDeadlines' },
+        { href: '/admin/academics/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/academics/mark-attendance', label: 'Mark Attendance', icon: ClipboardCheck },
         { href: '/admin/academics/assign-attendance-marker', label: 'Assign Attendance Marker', icon: UserCheckIcon },
         { href: '/admin/academics/student-absences', label: 'Student Absence Approvals', icon: ClipboardCheck },
@@ -142,7 +143,6 @@ export const allMenuItems = [
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
         { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
         { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
-        { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Reporting Hub', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
         { href: '/admin/fees', label: 'Fee Templates', icon: HandCoins },
@@ -368,6 +368,7 @@ export const studentMenuItems = [
             { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
             { href: '/student/resources', label: 'Resources', icon: FileText },
             { href: '/student/courses/results', label: 'My Results', icon: ClipboardCheck },
+            { href: '/student/scholarships', label: 'Scholarships & Support', icon: GraduationCap },
         ]
     },
     {
