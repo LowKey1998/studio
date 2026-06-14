@@ -2647,22 +2647,7 @@ export default function PaymentsManagementPage() {
                     )}
 
                     {currentTab !== "Overview" && currentTab !== "Invoices" && currentTab !== "Fee Collection" && currentTab !== "Transactions" && currentTab !== "Bank Reconciliation" && currentTab !== "Audit Logs" && (
-                        isQuickBooksEnabled ? (
-                            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center shadow-sm">
-                                <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
-                                    <Settings className="h-8 w-8 animate-spin-slow text-blue-600" />
-                                </div>
-                                <h3 className="text-base font-bold text-gray-900 mb-1">{tabsList.find(t => t.id === currentTab)?.label} Console</h3>
-                                <p className="text-xs text-gray-500 max-w-md mx-auto mb-6">
-                                    This financial workspace section is synchronized via QuickBooks & Sage. Budget sheets, departmental requisitions, and compliance forecasting are managed under this period.
-                                </p>
-                                <div className="flex justify-center gap-3">
-                                    <Button size="sm" onClick={() => toast({ title: "Module Sync", description: "Triggered standard integrations synchronization." })}>Sync QuickBooks</Button>
-                                    <Button size="sm" variant="outline" onClick={() => setCurrentTab("Overview")}>Return to Overview</Button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-6 animate-in fade-in duration-200">
+                        <div className="space-y-6 animate-in fade-in duration-200">
                                 {currentTab === "Budget" && (
                                     <Card className="border-0 shadow-md">
                                         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -3041,7 +3026,6 @@ export default function PaymentsManagementPage() {
                                     </Card>
                                 )}
                             </div>
-                        )
                     )}
                 </div>
             </div>
