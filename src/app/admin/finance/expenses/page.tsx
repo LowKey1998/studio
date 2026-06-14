@@ -25,9 +25,11 @@ type Expense = {
     description: string;
     amount: number;
     vendor?: string;
+    department?: string;
 };
 
-const expenseCategories = ["Utilities", "Salaries", "Supplies", "Maintenance", "Marketing", "Travel", "Other"];
+const expenseCategories = ["Salaries", "Infrastructure", "Scholarships", "Utilities", "Equipment", "Others", "Supplies", "Maintenance", "Marketing", "Travel", "Other"];
+const departments = ["Academics", "Administration", "Maintenance", "Library", "Clinicals", "Student Life", "Research"];
 
 export default function ExpenseTrackingPage() {
     const [expenses, setExpenses] = React.useState<Expense[]>([]);
@@ -38,6 +40,7 @@ export default function ExpenseTrackingPage() {
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [date, setDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
     const [category, setCategory] = React.useState('');
+    const [department, setDepartment] = React.useState('');
     const [description, setDescription] = React.useState('');
     const [amount, setAmount] = React.useState('');
     const [vendor, setVendor] = React.useState('');
@@ -77,13 +80,14 @@ export default function ExpenseTrackingPage() {
     const resetForm = () => {
         setDate(format(new Date(), 'yyyy-MM-dd'));
         setCategory('');
+        setDepartment('');
         setDescription('');
         setAmount('');
         setVendor('');
     };
 
     const handleSaveExpense = async () => {
-        if (!date || !category || !description || !amount) {
+        if (!date || !category || !department || !description || !amount) {
             toast({ variant: 'destructive', title: 'Missing required fields' });
             return;
         }
@@ -93,6 +97,7 @@ export default function ExpenseTrackingPage() {
             const expenseData = {
                 date,
                 category,
+                department,
                 description,
                 amount: parseFloat(amount),
                 vendor
@@ -148,6 +153,11 @@ export default function ExpenseTrackingPage() {
                                     <SelectContent>{expenseCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
+                            <div className="space-y-1"><Label>Department / Division</Label>
+                                <Select value={department} onValueChange={setDepartment}><SelectTrigger><SelectValue placeholder="Select a department..."/></SelectTrigger>
+                                    <SelectContent>{departments.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
                             <div className="space-y-1"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
                             <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} /></div>
                              <div className="space-y-1"><Label>Vendor (Optional)</Label><Input value={vendor} onChange={e => setVendor(e.target.value)} /></div>
@@ -161,13 +171,14 @@ export default function ExpenseTrackingPage() {
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Category</TableHead><TableHead>Description</TableHead><TableHead>Vendor</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="text-right"></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Category</TableHead><TableHead>Department</TableHead><TableHead>Description</TableHead><TableHead>Vendor</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="text-right"></TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-24"/></TableCell></TableRow> :
+                        {loading ? <TableRow><TableCell colSpan={7}><Skeleton className="h-24"/></TableCell></TableRow> :
                          expenses.map(exp => (
                             <TableRow key={exp.id}>
                                 <TableCell>{format(new Date(exp.date), 'PPP')}</TableCell>
                                 <TableCell>{exp.category}</TableCell>
+                                <TableCell className="font-semibold">{exp.department || 'N/A'}</TableCell>
                                 <TableCell>{exp.description}</TableCell>
                                 <TableCell>{exp.vendor}</TableCell>
                                 <TableCell className="text-right font-medium">{exp.amount.toFixed(2)}</TableCell>

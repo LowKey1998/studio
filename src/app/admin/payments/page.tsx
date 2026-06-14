@@ -685,7 +685,16 @@ export default function PaymentsManagementPage() {
     const localBudgetWithActuals = React.useMemo(() => {
         const expenseByCategory: Record<string, number> = {};
         expensesList.forEach((exp: any) => {
-            expenseByCategory[exp.category] = (expenseByCategory[exp.category] || 0) + (parseFloat(exp.amount) || 0);
+            let cat = exp.category || "Others";
+            if (cat === "Supplies" || cat === "Maintenance") {
+                cat = "Infrastructure";
+            } else if (cat === "Travel" || cat === "Marketing" || cat === "Other") {
+                cat = "Others";
+            }
+            if (cat === "Others" || cat === "Other") {
+                cat = "Others";
+            }
+            expenseByCategory[cat] = (expenseByCategory[cat] || 0) + (parseFloat(exp.amount) || 0);
         });
         return localBudget.map(item => ({
             ...item,
@@ -696,11 +705,14 @@ export default function PaymentsManagementPage() {
     const localAnnualBudgetWithActuals = React.useMemo(() => {
         const expenseByDept: Record<string, number> = {};
         expensesList.forEach((exp: any) => {
-            let dept = "Administration";
-            if (exp.category === "Salaries") dept = "Administration";
-            else if (exp.category === "Infrastructure" || exp.category === "Utilities") dept = "Maintenance";
-            else if (exp.category === "Scholarships" || exp.category === "Equipment") dept = "Academics";
-            else if (exp.category === "Supplies") dept = "Library";
+            let dept = exp.department;
+            if (!dept) {
+                dept = "Administration";
+                if (exp.category === "Salaries") dept = "Administration";
+                else if (exp.category === "Infrastructure" || exp.category === "Utilities" || exp.category === "Maintenance") dept = "Maintenance";
+                else if (exp.category === "Scholarships" || exp.category === "Equipment") dept = "Academics";
+                else if (exp.category === "Supplies") dept = "Library";
+            }
             
             expenseByDept[dept] = (expenseByDept[dept] || 0) + (parseFloat(exp.amount) || 0);
         });
