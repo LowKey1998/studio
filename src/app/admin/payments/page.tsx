@@ -89,6 +89,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { logFinancialAudit } from '@/lib/financial-audit';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 
 type FeeBreakdown = {
@@ -2227,7 +2228,12 @@ export default function PaymentsManagementPage() {
                                                     <TableRow key={tx.key} className="hover:bg-muted/10">
                                                         <TableCell className="text-xs whitespace-nowrap">{format(parseISO(tx.paymentDate), 'dd MMM yyyy HH:mm')}</TableCell>
                                                         <TableCell className="font-mono text-xs font-medium">{tx.transactionId}</TableCell>
-                                                        <TableCell className="text-xs font-bold">{studentName}</TableCell>
+                                                        <TableCell>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-bold text-xs">{studentName}</span>
+                                                                <span className="text-[10px] text-muted-foreground font-mono">{studentProfile?.id || 'N/A'}</span>
+                                                            </div>
+                                                        </TableCell>
                                                         <TableCell className="text-xs"><Badge variant="outline">{tx.method || 'Online'}</Badge></TableCell>
                                                         <TableCell className="text-xs">{tx.purpose || 'Registration Fees'}</TableCell>
                                                         <TableCell className="text-right text-green-600 font-bold text-xs whitespace-nowrap">{formatVal(tx.amount)}</TableCell>
